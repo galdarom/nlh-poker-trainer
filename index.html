@@ -579,6 +579,19 @@
     return Math.max(0, Math.min(0.97, v));
   }
 
+  // 3B: balanced bet size as a fraction of pot — from board texture + street + type only
+  // (NOT hand strength), so value and bluffs are sized identically on a given board.
+  function betSizeFraction(texture, street, typeLabel) {
+    const wet = texture && (texture.connected || texture.monotone);
+    const semi = texture && texture.twoTone && !wet;
+    let frac = wet ? 0.75 : semi ? 0.55 : 0.33; // dry default = 1/3
+    if (street >= 4) frac += 0.10;              // turn
+    if (street >= 5) frac += 0.05;              // river (+0.15 total)
+    const mult = { LAG: 1.15, TAG: 1.0, TP: 0.9, LP: 0.85 }[typeLabel];
+    frac *= (mult != null ? mult : 1.0);
+    return Math.max(0.25, Math.min(1.1, frac));
+  }
+
   function clampThreshold(n) { return Math.max(1, Math.min(99, n)); }
 
   // Continuous shift of thresholds by effective stack depth (in BB).
@@ -705,7 +718,7 @@
   }
 
   return { PROFILES, TYPES, decideActionByType, perceivedRead, randomType, decidePostflop, depthScale,
-    classifyPostflop, betFrequency };
+    classifyPostflop, betFrequency, betSizeFraction };
 });
 
 </script>
@@ -1581,7 +1594,14 @@
         if (action === 'fold' && currentBet === p.committed) action = 'call';
         // If player is in call-or-fold-only mode, downgrade 'raise' to 'call'.
         if (callOrFoldOnly && (action === 'raise' || action === 'bet' || action === 'allin')) action = 'call';
-        applyAction(seat, action);
+        // 3B: size a postflop opponent BET by board/street/type (balanced — same for value & bluff).
+        let actOpts;
+        if (action === 'bet' && mode === 'postflop' && Players.betSizeFraction) {
+          const frac = Players.betSizeFraction(texture, board.length, p.type);
+          const amt = Math.max(bigBlind, Math.round(frac * pot));
+          actOpts = { toAmount: p.committed + amt };
+        }
+        applyAction(seat, action, actOpts);
       }
     }
 
