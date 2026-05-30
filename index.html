@@ -1,0 +1,2165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NLH Trainer — Stacks & All-ins</title>
+<style>
+  :root { --felt:#0b6b3a; --felt-dark:#084d2a; --gold:#e8c66b; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, Arial, sans-serif; background:#13241b; color:#f4f4f4; }
+  h1 { text-align:center; font-weight:600; margin:10px 0; font-size:19px; }
+  .session { text-align:center; font-size:14px; margin:2px 0 8px; }
+  .session .net.pos { color:#9be59b; } .session .net.neg { color:#f39b9b; }
+  .table { position:relative; width:720px; height:420px; margin:12px auto;
+    background:radial-gradient(ellipse at center, var(--felt), var(--felt-dark));
+    border:10px solid #5a3a1a; border-radius:210px; box-shadow:0 0 40px rgba(0,0,0,.5) inset; }
+  .center { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); text-align:center; }
+  .street { font-size:12px; color:#cdeccd; letter-spacing:1px; text-transform:uppercase; }
+  .pot { font-size:18px; color:#fff; margin:4px 0; font-weight:700; text-shadow:0 1px 3px #000; }
+  .pot .tocall { font-size:12px; color:#ffd9a0; font-weight:600; }
+  /* chips a player has wagered this street, shown in front of them toward the pot */
+  .betchip { position:absolute; transform:translate(-50%,-50%); z-index:6; white-space:nowrap;
+    background:#16110a; color:var(--gold); border:1.5px solid var(--gold); border-radius:12px;
+    padding:2px 8px; font-size:12px; font-weight:700; box-shadow:0 1px 4px rgba(0,0,0,.55); }
+  .betchip.allin { color:#ffb3b3; border-color:#ffb3b3; }
+  .board { display:flex; gap:5px; justify-content:center; min-height:50px; }
+  .seat { position:absolute; width:118px; text-align:center; transform:translate(-50%,-50%); }
+  .seat .pos { font-size:12px; color:var(--gold); }
+  .seat .type { background:#2f5740; color:#fff; border-radius:4px; padding:0 4px; font-size:10px; }
+  .seat .stack { font-size:11px; color:#d8f0e2; }
+  .seat.hero .pos { color:#fff; font-weight:700; }
+  .seat.folded { opacity:.4; }
+  .seat.allin .stack { color:#ffb3b3; font-weight:700; }
+  .seat.winner .pos { color:#9be59b; font-weight:700; }
+  .seat .rebuy { font-size:10px; color:var(--gold); }
+  .cards { display:flex; gap:4px; justify-content:center; margin-top:2px; }
+  .card { width:30px; height:43px; background:#fff; border-radius:5px; color:#111;
+    display:flex; align-items:center; justify-content:center; font-weight:700; font-size:16px;
+    box-shadow:0 1px 3px rgba(0,0,0,.4); }
+  .card.red { color:#c0202a; }
+  .card.back { background:linear-gradient(135deg,#274b8f,#16294f); color:transparent; }
+  .badge { margin-top:3px; min-height:15px; }
+  .score { font-size:11px; border-radius:4px; padding:1px 5px; }
+  .score.live { background:var(--gold); color:#222; font-weight:700; }
+  .score.read { background:#23415c; color:#cfe6ff; }
+  .score.true { background:#5c2342; color:#ffd6ec; }
+  .score.folded { background:#444; color:#ccc; }
+  .act { font-size:11px; color:#ffe; margin-top:2px; text-transform:capitalize; }
+  .controls { text-align:center; margin:8px 0; min-height:42px; }
+  button { background:var(--gold); color:#222; border:none; padding:9px 14px; font-size:14px;
+    font-weight:700; border-radius:8px; cursor:pointer; margin:0 3px; }
+  button.secondary { background:#2f5740; color:#fff; }
+  button.danger { background:#a8324a; color:#fff; }
+  .feedback { text-align:center; min-height:20px; font-size:14px; margin:6px auto; max-width:640px; }
+  .feedback.good { color:#9be59b; } .feedback.loose { color:#f3c969; } .feedback.tight { color:#f39b9b; }
+  .result { text-align:center; font-size:15px; color:#fff; margin:6px auto; min-height:20px; }
+  .heroInfo { text-align:center; font-size:13px; color:#e8f3ec; margin:6px auto; max-width:640px; }
+  .heroInfo .reason { font-size:12px; color:#bcd; }
+  .overlay { position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex;
+    align-items:center; justify-content:center; z-index:50; }
+  .matrixbox { background:#16241c; border:1px solid #2f5740; border-radius:10px; padding:14px 16px;
+    box-shadow:0 8px 30px rgba(0,0,0,.6); }
+  .matrixbox h3 { margin:0 0 4px; font-size:14px; color:#fff; }
+  .matrixbox .revealcards { display:flex; gap:5px; align-items:center; margin:4px 0 8px; font-size:12px; color:#ffd6ec; }
+  .matrixbox .revealcards .card { width:30px; height:43px; }
+  .matrixbox .legend { font-size:11px; color:#cfe6d6; margin:2px 0 10px; }
+  .matrixbox .legend b { display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; margin:0 3px 0 8px; }
+  .grid13 { display:grid; grid-template-columns:repeat(13, 26px); grid-auto-rows:26px; gap:1px; }
+  .gcell { font-size:9px; display:flex; align-items:center; justify-content:center; color:#0c140f;
+    border-radius:2px; user-select:none; }
+  .gcell.raise { background:#d8643c; color:#fff; }   /* red = raise/3-bet */
+  .gcell.call  { background:#3c79d8; color:#fff; }   /* blue = call/limp */
+  .gcell.fold  { background:#33402f; color:#7e927e; } /* grey = fold */
+  .gcell.mixed { position:relative; color:#fff; text-shadow:0 1px 1px rgba(0,0,0,.7); }
+  .gcell.mixed .mixpct { position:absolute; bottom:0; right:1px; font-size:6px; line-height:1; opacity:.9; }
+  .matrixbox .legend2 { font-size:11px; color:#cfe6d6; margin:6px 0 0; max-width:352px; }
+  .closebtn { margin-top:10px; }
+  .setuplabel { font-size:13px; color:#cdeccd; margin-right:4px; }
+  #setupRow .sep { color:#5a6; margin:0 6px; }
+  .typebtn { padding:4px 9px; margin:0 2px; font-size:12px; border-radius:6px; border:1px solid #3a5; background:#1d2b22; color:#cfe6d6; cursor:pointer; }
+  .typebtn.active { background:#3a8f5a; color:#fff; border-color:#5fd089; }
+</style>
+</head>
+<body>
+  <h1>NLH Trainer — Stacks · All-ins · Side Pots</h1>
+  <div class="session" id="session"></div>
+  <div class="table" id="table"></div>
+  <div id="controls" class="controls"></div>
+  <div id="feedback" class="feedback"></div>
+  <div id="result" class="result"></div>
+  <div id="heroInfo" class="heroInfo"></div>
+  <div class="controls" id="setupRow">
+    <span class="setuplabel">You play as:</span>
+    <span id="heroTypeSel"></span>
+    <span class="sep">·</span>
+    <button id="myRangeBtn" class="secondary">My range</button>
+    <button id="dealBtn" class="secondary">Deal new hand</button>
+    <button id="newGameBtn" class="secondary">New Game</button>
+  </div>
+
+  <script>
+// UMD-style module: works in Node (module.exports) and browser (window.Engine).
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.Engine = api;
+})(typeof self !== 'undefined' ? self : this, function () {
+  const RANKS = ['2','3','4','5','6','7','8','9','T','J','Q','K','A'];
+  const SUITS = ['c','d','h','s'];
+
+  function rankValue(rank) {
+    const i = RANKS.indexOf(rank);
+    if (i < 0) throw new Error('bad rank: ' + rank);
+    return i + 2;
+  }
+
+  function createDeck() {
+    const deck = [];
+    for (const rank of RANKS) for (const suit of SUITS) deck.push({ rank, suit });
+    return deck;
+  }
+
+  // Fisher-Yates. rng() must return [0,1). Defaults to Math.random.
+  function shuffle(deck, rng) {
+    rng = rng || Math.random;
+    const a = deck.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  // Deal 2 hole cards to each of `numSeats` seats from the top of the deck.
+  function dealHands(deck, numSeats) {
+    if (numSeats * 2 > deck.length) throw new Error('not enough cards to deal');
+    const seats = [];
+    let idx = 0;
+    for (let s = 0; s < numSeats; s++) {
+      seats.push([deck[idx++], deck[idx++]]);
+    }
+    return seats;
+  }
+
+  // Normalized key like 'AA', 'AKs', 'AKo', '72o'. High card first.
+  function canonicalKey(c1, c2) {
+    let hi = c1, lo = c2;
+    if (rankValue(c2.rank) > rankValue(c1.rank)) { hi = c2; lo = c1; }
+    if (hi.rank === lo.rank) return hi.rank + lo.rank; // pair
+    const suited = hi.suit === lo.suit ? 's' : 'o';
+    return hi.rank + lo.rank + suited;
+  }
+
+  // All 169 canonical starting hands with metadata.
+  function enumerateStartingHands() {
+    const hands = [];
+    for (let i = RANKS.length - 1; i >= 0; i--) {
+      for (let j = RANKS.length - 1; j >= 0; j--) {
+        const hi = RANKS[i], lo = RANKS[j];
+        if (i === j) {
+          hands.push({ key: hi + lo, hi, lo, type: 'pair' });
+        } else if (i > j) {
+          // suited and offsuit, high rank first
+          hands.push({ key: hi + lo + 's', hi, lo, type: 'suited' });
+          hands.push({ key: hi + lo + 'o', hi, lo, type: 'offsuit' });
+        }
+      }
+    }
+    return hands;
+  }
+
+  // Chen formula. Returns { score (number), factors }.
+  function heuristicScore(c1, c2) {
+    const hiCard = rankValue(c1.rank) >= rankValue(c2.rank) ? c1 : c2;
+    const loCard = hiCard === c1 ? c2 : c1;
+    const hiVal = rankValue(hiCard.rank);
+    const loVal = rankValue(loCard.rank);
+    const isPair = hiVal === loVal;
+    const isSuited = c1.suit === c2.suit;
+
+    // Base points from the highest card.
+    function highPoints(val) {
+      if (val === 14) return 10;     // Ace
+      if (val === 13) return 8;      // King
+      if (val === 12) return 7;      // Queen
+      if (val === 11) return 6;      // Jack
+      return val / 2;                // T down to 2
+    }
+
+    let score;
+    if (isPair) {
+      score = Math.max(highPoints(hiVal) * 2, 5); // pairs: double, min 5
+    } else {
+      score = highPoints(hiVal);
+      if (isSuited) score += 2;
+      const gap = hiVal - loVal - 1; // 0 = connectors
+      if (gap === 1) score -= 1;
+      else if (gap === 2) score -= 2;
+      else if (gap === 3) score -= 4;
+      else if (gap >= 4) score -= 5;
+      // Straight bonus: 0/1-gap hands with both cards below Q.
+      if (gap <= 1 && hiVal < 12) score += 1;
+    }
+    score = Math.round(score * 2) / 2; // round to nearest half-point
+
+    const gap = isPair ? 0 : (hiVal - loVal - 1);
+    return {
+      score,
+      factors: {
+        isPair, isSuited, gap,
+        hi: hiCard.rank, lo: loCard.rank,
+        highCard: hiVal >= 12, // Q or better
+      },
+    };
+  }
+
+  let _strengthTable = null; // Map<key, {score1to10, heuristic, rank}>
+
+  function buildStrengthTable() {
+    if (_strengthTable) return _strengthTable;
+    const hands = enumerateStartingHands().map(h => {
+      // Build a representative card pair for scoring this canonical hand.
+      const c1 = { rank: h.hi, suit: 'c' };
+      const c2 = { rank: h.lo, suit: (h.type === 'suited' ? 'c' : 'd') };
+      const hs = heuristicScore(c1, c2).score;
+      return { key: h.key, heuristic: hs };
+    });
+    // Sort strongest first.
+    hands.sort((a, b) => b.heuristic - a.heuristic);
+    const n = hands.length; // 169
+    const table = new Map();
+    hands.forEach((h, i) => {
+      const rank = i + 1; // 1 = strongest (AA) ... n = weakest (72o)
+      // i=0 (strongest) -> 10, i=n-1 (weakest) -> 1. (coarse bucket, UNCHANGED)
+      const score1to10 = Math.max(1, Math.min(10, Math.ceil(((n - i) / n) * 10)));
+      // fine display value: rank 1 -> 100, rank n -> 1, strictly monotonic by rank.
+      const score100 = Math.round(1 + ((n - rank) / (n - 1)) * 99);
+      table.set(h.key, { score: score1to10, score100, heuristic: h.heuristic, rank });
+    });
+    _strengthTable = table;
+    return table;
+  }
+
+  function rawScore(c1, c2) {
+    const table = buildStrengthTable();
+    const key = canonicalKey(c1, c2);
+    const entry = table.get(key);
+    const factors = heuristicScore(c1, c2).factors;
+    return { score: entry.score, score100: entry.score100, heuristic: entry.heuristic, rank: entry.rank, key, factors };
+  }
+
+  const ACTION_ORDER = ['UTG','MP','HJ','CO','BTN','SB','BB'];
+  // Clockwise from the button.
+  const CLOCKWISE_FROM_BUTTON = ['BTN','SB','BB','UTG','MP','HJ','CO'];
+  const POSITIONS = ACTION_ORDER;
+
+  function positionForSeat(seat, buttonSeat, numSeats) {
+    const offset = ((seat - buttonSeat) % numSeats + numSeats) % numSeats;
+    return CLOCKWISE_FROM_BUTTON[offset];
+  }
+
+  function seatsWithPositions(numSeats, buttonSeat) {
+    const seats = [];
+    for (let s = 0; s < numSeats; s++) {
+      seats.push({ seat: s, position: positionForSeat(s, buttonSeat, numSeats) });
+    }
+    return seats;
+  }
+
+  // Positional adjustment applied to the raw 1-10 score.
+  const POSITION_ADJUST = {
+    UTG: -2, MP: -1, HJ: 0, CO: +1, BTN: +2, SB: -1, BB: -1,
+  };
+
+  function clampScore(n) {
+    return Math.max(1, Math.min(10, Math.round(n)));
+  }
+
+  function positionScore(rawScoreValue, position) {
+    const adj = POSITION_ADJUST[position];
+    if (adj === undefined) throw new Error('bad position: ' + position);
+    const score = clampScore(rawScoreValue + adj);
+    let reason;
+    if (adj > 0) reason = `${position} is a late position — play it stronger (+${adj}).`;
+    else if (adj < 0) reason = `${position} is an early/blind position — play tighter (${adj}).`;
+    else reason = `${position} is a middle position — no change.`;
+    return { score, reason, adjustment: adj };
+  }
+
+  // Minimum 1-10 bucket to OPEN (no prior raise), by position.
+  const OPEN_THRESHOLD = { UTG: 8, MP: 7, HJ: 6, CO: 5, BTN: 4, SB: 5, BB: 4 };
+  // Minimum bucket to CONTINUE when facing a raise.
+  const CONTINUE_THRESHOLD = 8;
+  // state: { raised: boolean }. Returns 'fold' | 'call' | 'raise'.
+  function decideAction(bucket, position, state) {
+    if (state && state.raised) {
+      if (bucket >= CONTINUE_THRESHOLD + 1) return 'raise'; // 3-bet the very top
+      if (bucket >= CONTINUE_THRESHOLD) return 'call';
+      return 'fold';
+    }
+    const open = OPEN_THRESHOLD[position];
+    if (bucket < open) return 'fold';
+    return 'raise'; // v1: opening hands always raise (no limping AI)
+  }
+
+  // opts: { heroSeat, buttonSeat, numSeats, bucketForSeat(seat) -> 1..10 }
+  // Returns { actions: [{seat, position, action}], raisedBefore, callersBefore, foldedToHero }
+  function runActionUntilHero(opts) {
+    const { heroSeat, buttonSeat, numSeats, bucketForSeat } = opts;
+    // Map position label -> seat for this button.
+    const seatOf = {};
+    for (let s = 0; s < numSeats; s++) {
+      seatOf[positionForSeat(s, buttonSeat, numSeats)] = s;
+    }
+    const heroPosition = positionForSeat(heroSeat, buttonSeat, numSeats);
+    const actions = [];
+    let raisedBefore = false;
+    let callersBefore = 0;
+    for (const pos of ACTION_ORDER) {
+      const seat = seatOf[pos];
+      if (seat === heroSeat) break; // stop at hero
+      const action = decideAction(bucketForSeat(seat), pos, { raised: raisedBefore });
+      actions.push({ seat, position: pos, action });
+      if (action === 'raise') raisedBefore = true;
+      else if (action === 'call') callersBefore += 1;
+    }
+    const foldedToHero = actions.length > 0 && actions.every(a => a.action === 'fold');
+    return { actions, raisedBefore, callersBefore, foldedToHero, heroPosition };
+  }
+
+  // base = position-adjusted 1-10 score. summary from runActionUntilHero.
+  function postActionScore(base, summary) {
+    let delta = 0;
+    let reason;
+    if (summary.raisedBefore) {
+      delta = -2;
+      reason = 'A player raised before you — your hand is relatively weaker against a raising range (-2).';
+    } else if (summary.foldedToHero) {
+      delta = +1;
+      reason = 'Folded to you — you can play more aggressively / open for a steal (+1).';
+    } else if (summary.callersBefore > 0) {
+      delta = -1;
+      reason = `${summary.callersBefore} caller(s) before you — multiway pots favor stronger hands (-1).`;
+    } else {
+      delta = 0;
+      reason = 'No action of note before you.';
+    }
+    return { score: clampScore(base + delta), reason, adjustment: delta };
+  }
+
+  const SUIT_SYMBOL = { c: '♣', d: '♦', h: '♥', s: '♠' };
+
+  function suitSymbol(suit) { return SUIT_SYMBOL[suit]; }
+  function suitColor(suit) { return (suit === 'h' || suit === 'd') ? 'red' : 'black'; }
+  function cardLabel(card) { return card.rank + SUIT_SYMBOL[card.suit]; }
+  // Array of 10 booleans; first `n` are true.
+  function scoreBar(n) {
+    return Array.from({ length: 10 }, (_, i) => i < n);
+  }
+
+  return { RANKS, SUITS, rankValue, createDeck, shuffle, dealHands,
+           canonicalKey, enumerateStartingHands, heuristicScore,
+           buildStrengthTable, rawScore,
+           ACTION_ORDER, POSITIONS, positionForSeat, seatsWithPositions,
+           clampScore, positionScore,
+           decideAction, runActionUntilHero, postActionScore,
+           suitSymbol, suitColor, cardLabel, scoreBar };
+});
+
+</script>
+  <script>
+// UMD: Node requires engine; browser uses window.Engine.
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    module.exports = factory(require('./engine.js'));
+  } else {
+    root.Evaluator = factory(root.Engine);
+  }
+})(typeof self !== 'undefined' ? self : this, function (Engine) {
+  const { rankValue } = Engine;
+  const CATS = ['high-card', 'pair', 'two-pair', 'trips', 'straight',
+                'flush', 'full-house', 'quads', 'straight-flush'];
+
+  // Highest card of the best straight in `values`, or 0. Handles the wheel.
+  function bestStraightHigh(values) {
+    const set = new Set(values);
+    if (set.has(14)) set.add(1); // ace can be low
+    const arr = Array.from(set).sort((a, b) => b - a);
+    let run = 1;
+    for (let i = 0; i < arr.length - 1; i++) {
+      if (arr[i] - 1 === arr[i + 1]) {
+        run++;
+        if (run >= 5) return arr[i + 1] + 4;
+      } else {
+        run = 1;
+      }
+    }
+    return 0;
+  }
+
+  // evaluate 5-7 cards -> { category, categoryRank, value, ranks }
+  function evaluate(cards) {
+    const vals = cards.map(c => rankValue(c.rank));
+    const valsDesc = vals.slice().sort((a, b) => b - a);
+
+    const rankCount = {};
+    for (const v of vals) rankCount[v] = (rankCount[v] || 0) + 1;
+
+    const suitGroups = {};
+    for (const c of cards) {
+      (suitGroups[c.suit] = suitGroups[c.suit] || []).push(rankValue(c.rank));
+    }
+    let flushSuit = null;
+    for (const s of Object.keys(suitGroups)) {
+      if (suitGroups[s].length >= 5) flushSuit = s;
+    }
+
+    const quads = [], trips = [], pairs = [];
+    for (const v of Object.keys(rankCount).map(Number).sort((a, b) => b - a)) {
+      const n = rankCount[v];
+      if (n === 4) quads.push(v);
+      else if (n === 3) trips.push(v);
+      else if (n === 2) pairs.push(v);
+    }
+    // distinct kickers from highest down, excluding given ranks
+    function kickers(exclude, n) {
+      const ex = new Set(exclude);
+      const out = [];
+      for (const v of valsDesc) {
+        if (ex.has(v) || out.includes(v)) continue;
+        out.push(v);
+        if (out.length === n) break;
+      }
+      return out;
+    }
+
+    const sfHigh = flushSuit ? bestStraightHigh(suitGroups[flushSuit]) : 0;
+    const straightHigh = bestStraightHigh(vals);
+
+    let categoryRank, ranks;
+    if (sfHigh) {
+      categoryRank = 8; ranks = [sfHigh];
+    } else if (quads.length) {
+      categoryRank = 7; ranks = [quads[0], ...kickers([quads[0]], 1)];
+    } else if (trips.length && (pairs.length || trips.length > 1)) {
+      // Full house: best trip + best pair. With two trips, the second trip can serve
+      // as the pair (compare it against the best actual pair). trips/pairs are sorted desc.
+      const t = trips[0];
+      const p = trips.length > 1 ? Math.max(trips[1], pairs[0] || 0) : pairs[0];
+      categoryRank = 6; ranks = [t, p];
+    } else if (flushSuit) {
+      categoryRank = 5; ranks = suitGroups[flushSuit].slice().sort((a, b) => b - a).slice(0, 5);
+    } else if (straightHigh) {
+      categoryRank = 4; ranks = [straightHigh];
+    } else if (trips.length) {
+      categoryRank = 3; ranks = [trips[0], ...kickers([trips[0]], 2)];
+    } else if (pairs.length >= 2) {
+      categoryRank = 2; ranks = [pairs[0], pairs[1], ...kickers([pairs[0], pairs[1]], 1)];
+    } else if (pairs.length === 1) {
+      categoryRank = 1; ranks = [pairs[0], ...kickers([pairs[0]], 3)];
+    } else {
+      categoryRank = 0; ranks = valsDesc.slice(0, 5);
+    }
+
+    while (ranks.length < 5) ranks.push(0);
+    ranks = ranks.slice(0, 5);
+    const value = ranks.reduce((acc, r) => acc * 15 + r, categoryRank);
+    return { category: CATS[categoryRank], categoryRank, value, ranks };
+  }
+
+  function compareHands(a, b) {
+    return a.value > b.value ? 1 : (a.value < b.value ? -1 : 0);
+  }
+
+  // entries: [{ seat, cards }]. Returns { winners:[seat...], evals: Map<seat, eval> }.
+  function bestHandAmong(entries) {
+    const evals = new Map();
+    let best = -1;
+    for (const e of entries) {
+      const ev = evaluate(e.cards);
+      evals.set(e.seat, ev);
+      if (ev.value > best) best = ev.value;
+    }
+    const winners = entries.filter(e => evals.get(e.seat).value === best).map(e => e.seat);
+    return { winners, evals };
+  }
+
+  return { evaluate, CATS, bestStraightHigh, compareHands, bestHandAmong };
+});
+
+</script>
+  <script>
+// UMD: Node (module.exports) + browser (window.Players). No dependencies.
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.Players = api;
+})(typeof self !== 'undefined' ? self : this, function () {
+  // Thresholds are on effective strength E (1-10). `call` in the OPEN spot means a limp.
+  const PROFILES = {
+    LP:  { label: 'LP',  name: 'Loose-Passive',    open: { raise: 9, call: 4 },  vsRaise: { raise: 10, call: 5 },
+           postflop: { bet: 7, call: 3, raise: 9 } },
+    LAG: { label: 'LAG', name: 'Loose-Aggressive', open: { raise: 5, call: 4 },  vsRaise: { raise: 8,  call: 6 },
+           postflop: { bet: 4, call: 4, raise: 6 } },
+    TP:  { label: 'TP',  name: 'Tight-Passive',    open: { raise: 9, call: 6 },  vsRaise: { raise: 10, call: 8 },
+           postflop: { bet: 7, call: 5, raise: 9 } },
+    TAG: { label: 'TAG', name: 'Tight-Aggressive', open: { raise: 7, call: 99 }, vsRaise: { raise: 9,  call: 8 },
+           postflop: { bet: 5, call: 5, raise: 8 } },
+  };
+  const TYPES = ['LP', 'LAG', 'TP', 'TAG'];
+
+  function clampThreshold(n) { return Math.max(1, Math.min(99, n)); }
+
+  // Continuous shift of thresholds by effective stack depth (in BB).
+  // Short (<=40bb) -> commit wider (lower raise/call). Deep (>120bb) -> wider preflop, tighter postflop.
+  function depthScale(profile, effDepthBB) {
+    const out = {
+      label: profile.label, name: profile.name,
+      open: Object.assign({}, profile.open),
+      vsRaise: Object.assign({}, profile.vsRaise),
+      postflop: Object.assign({}, profile.postflop),
+    };
+    if (effDepthBB == null) return out;
+    if (effDepthBB <= 40) {
+      // 40bb -> 0 shift; 15bb -> max shift. Linear, clamped.
+      const t = Math.max(0, Math.min(1, (40 - effDepthBB) / (40 - 15)));
+      const rShift = -2 * t, cShift = -1 * t;
+      out.open.raise = clampThreshold(out.open.raise + rShift);
+      if (out.open.call !== 99) out.open.call = clampThreshold(out.open.call + cShift);
+      out.vsRaise.raise = clampThreshold(out.vsRaise.raise + rShift);
+      out.vsRaise.call = clampThreshold(out.vsRaise.call + cShift);
+      out.postflop.raise = clampThreshold(out.postflop.raise + rShift);
+      out.postflop.call = clampThreshold(out.postflop.call + cShift);
+    } else if (effDepthBB > 120) {
+      // 120bb -> 0; 200bb -> max. Preflop opens wider (-1), postflop stack-off tighter (+1).
+      const t = Math.max(0, Math.min(1, (effDepthBB - 120) / (200 - 120)));
+      if (out.open.raise !== 99) out.open.raise = clampThreshold(out.open.raise - 1 * t);
+      out.postflop.raise = clampThreshold(out.postflop.raise + 1 * t);
+    }
+    return out;
+  }
+
+  // E: 1-10 effective strength. context.raisesSoFar: raises already made this round.
+  function decideActionByType(E, profile, context) {
+    const raisesSoFar = context.raisesSoFar;
+    const p = context.effDepthBB != null ? depthScale(profile, context.effDepthBB) : profile;
+    if (raisesSoFar >= 3) return E >= 10 ? 'call' : 'fold';
+    const tbl = raisesSoFar === 0 ? p.open : p.vsRaise;
+    if (E >= tbl.raise) return 'raise';
+    if (E >= tbl.call) return 'call';
+    return 'fold';
+  }
+
+  const READ = {
+    LP:  { limp: 4, call: 5, raise: 9, reraise: 10 },
+    TP:  { limp: 5, call: 6, raise: 9, reraise: 10 },
+    LAG: { limp: 4, call: 5, raise: 6, reraise: 7 },
+    TAG: { limp: 6, call: 7, raise: 8, reraise: 9 },
+  };
+  // Postflop read by action; passive types reading "scary board" higher.
+  const PF_READ = {
+    LP:  { check: 3, call: 5, bet: 8, raise: 9 },
+    TP:  { check: 3, call: 6, bet: 8, raise: 10 },
+    LAG: { check: 3, call: 5, bet: 5, raise: 7 },
+    TAG: { check: 3, call: 6, bet: 7, raise: 8 },
+  };
+
+  function clampRead(n) { return Math.max(1, Math.min(10, n)); }
+
+  // Preflop (no opts) == v2. Postflop (opts={street,texture}) uses the postflop table.
+  function perceivedRead(profile, lastAction, raisesBefore, opts) {
+    if (lastAction === 'fold') return { score: null, text: 'folded' };
+    if (opts && opts.street && opts.street !== 'preflop') {
+      const base = PF_READ[profile.label][lastAction === 'check' ? 'check'
+        : lastAction === 'call' ? 'call' : lastAction === 'bet' ? 'bet' : 'raise'];
+      const tex = opts.texture || {};
+      const passive = profile.label === 'LP' || profile.label === 'TP';
+      const scary = tex.monotone || tex.connected || tex.highCard;
+      const aggressive_bet = (lastAction === 'bet' || lastAction === 'raise');
+      const nudge = (passive && aggressive_bet && scary) ? 1 : 0;
+      const score = clampRead(base + nudge);
+      const strength = score >= 9 ? 'very strong' : score >= 7 ? 'strong' : score >= 5 ? 'medium' : 'weak/wide';
+      return { score, text: `${profile.label} ${lastAction} — ${strength} (≈${score})` };
+    }
+    // preflop (v2 behavior)
+    const r = READ[profile.label];
+    let cell, human;
+    if (lastAction === 'call') { cell = raisesBefore === 0 ? 'limp' : 'call'; human = cell === 'limp' ? 'limp' : 'call'; }
+    else if (lastAction === 'raise') { cell = raisesBefore === 0 ? 'raise' : 'reraise'; human = cell === 'reraise' ? '3-bet' : 'raise'; }
+    else return { score: null, text: String(lastAction) };
+    const score = r[cell];
+    const strength = score >= 9 ? 'very strong' : score >= 7 ? 'strong' : score >= 5 ? 'medium' : 'weak/wide';
+    return { score, text: `${profile.label} ${human} — ${strength} (≈${score})` };
+  }
+
+  // Aggressive types bet/raise slightly lighter on dynamic boards; passive types don't.
+  function textureShift(profile, texture) {
+    if (!texture) return 0;
+    const aggressive = profile.label === 'LAG' || profile.label === 'TAG';
+    const dynamic = texture.connected || texture.twoTone || texture.monotone;
+    return aggressive && dynamic ? -1 : 0;
+  }
+
+  // E:1-10. context:{ facingBet, raisesSoFar, texture }. -> 'check'|'bet'|'call'|'raise'|'fold'
+  function decidePostflop(E, profile, context) {
+    const p = context.effDepthBB != null ? depthScale(profile, context.effDepthBB) : profile;
+    const t = p.postflop;
+    const shift = textureShift(profile, context.texture);
+    if (context.raisesSoFar >= 3) return E >= 10 ? 'call' : 'fold'; // cap
+    if (!context.facingBet) {
+      return E >= (t.bet + shift) ? 'bet' : 'check';
+    }
+    if (E >= (t.raise + shift)) return 'raise';
+    if (E >= t.call) return 'call';
+    return 'fold';
+  }
+
+  function randomType(rng) {
+    rng = rng || Math.random;
+    return TYPES[Math.floor(rng() * TYPES.length)];
+  }
+
+  return { PROFILES, TYPES, decideActionByType, perceivedRead, randomType, decidePostflop, depthScale };
+});
+
+</script>
+  <script>
+// UMD: Node requires engine; browser uses window.Engine.
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    module.exports = factory(require('./engine.js'));
+  } else {
+    root.Ranges = factory(root.Engine);
+  }
+})(typeof self !== 'undefined' ? self : this, function (Engine) {
+  const RANKS_HI = Engine.RANKS.slice().reverse(); // ['A','K',...,'2']
+
+  // rank (1..169) for a hand key, via representative cards.
+  function rankForHand(h) {
+    const c1 = { rank: h.hi, suit: 'c' };
+    const c2 = { rank: h.lo, suit: h.type === 'suited' ? 'c' : 'd' };
+    return Engine.rawScore(c1, c2).rank;
+  }
+
+  // Build the 13x13 grid: rows/cols are ranks A..2.
+  // cell[i][j]: i===j pair; i<j suited (hi=row, lo=col); i>j offsuit (hi=col, lo=row).
+  function buildGrid() {
+    const byKey = {};
+    for (const h of Engine.enumerateStartingHands()) byKey[h.key] = h;
+    const grid = [];
+    for (let i = 0; i < 13; i++) {
+      const row = [];
+      for (let j = 0; j < 13; j++) {
+        const a = RANKS_HI[i], b = RANKS_HI[j];
+        let key;
+        if (i === j) key = a + b;                 // pair
+        else if (i < j) key = a + b + 's';        // suited: row rank is higher
+        else key = b + a + 'o';                   // offsuit: col rank is higher
+        const h = byKey[key];
+        row.push({ key, hi: h.hi, lo: h.lo, type: h.type, rank: rankForHand(h) });
+      }
+      grid.push(row);
+    }
+    return grid;
+  }
+
+  const GRID = buildGrid();
+
+  // 169 keys strongest-first (rank ascending).
+  function enumerateByRank() {
+    return GRID.flat().slice().sort((a, b) => a.rank - b.rank).map(c => c.key);
+  }
+
+  // Baseline VPIP (fraction of 169 hands played from a middle position) and the share of the
+  // played range that is RAISED (the rest is call/limp). Grounded in VPIP/PFR research.
+  const TYPE_PROFILE = {
+    TAG: { vpip: 0.18, pfrShare: 0.85 },
+    LAG: { vpip: 0.34, pfrShare: 0.90 },
+    TP:  { vpip: 0.16, pfrShare: 0.25 },
+    LP:  { vpip: 0.40, pfrShare: 0.20 },
+  };
+  // Position widens/narrows the playable VPIP toward the button. (BTN/SB trimmed so the widest
+  // loose ranges stay realistic — see the opening clamp ceiling below.)
+  const POSITION_MULT = { UTG: 0.7, MP: 0.85, HJ: 1.0, CO: 1.25, BTN: 1.55, SB: 1.45, BB: 1.4 };
+
+  const N = 169;
+  function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+
+  // ctx.raisesBefore: 0 opening, 1 facing a raise, >=2 facing a 3-bet+.
+  function rangeFor(type, position, ctx) {
+    const prof = TYPE_PROFILE[type];
+    const posMult = POSITION_MULT[position] != null ? POSITION_MULT[position] : 1;
+    const raisesBefore = (ctx && ctx.raisesBefore) || 0;
+
+    // Effective playable fraction, narrowed by prior aggression. Ceiling 0.62 keeps even the
+    // widest loose-button opening range realistic (~62% of hands, not 75%+).
+    let playableFrac = clamp(prof.vpip * posMult, 0.03, 0.62);
+    let raiseShare = prof.pfrShare;
+    if (raisesBefore === 1) {
+      playableFrac = clamp(Math.min(playableFrac, prof.vpip * 0.6), 0.02, 0.6);
+      raiseShare = (type === 'TAG' || type === 'LAG') ? 0.25 : 0.10; // 3-bet top slice
+    } else if (raisesBefore >= 2) {
+      playableFrac = clamp(prof.vpip * 0.25, 0.015, 0.3);
+      raiseShare = (type === 'TAG' || type === 'LAG') ? 0.40 : 0.15; // 4-bet top slice
+    }
+
+    const playableCount = Math.max(1, Math.round(playableFrac * N)); // AA always playable
+    let raiseCount = Math.round(playableCount * raiseShare);
+    raiseCount = clamp(raiseCount, 1, playableCount); // AA always raises (top is in raise band)
+    const callCount = playableCount - raiseCount;
+
+    const ordered = enumerateByRank(); // strongest-first
+    const B1 = raiseCount;             // raise/call boundary index
+    const B2 = raiseCount + callCount; // call/fold boundary index
+
+    // Mix-zone half-width: wider ranges mix wider; clamp [1,6].
+    const w = clamp(Math.round(0.12 * playableCount), 1, 6);
+    // Overlap guard: never let the raise/call zone cross into the call/fold zone.
+    const gapHalf = Math.floor((B2 - B1) / 2);
+    const wEff = Math.max(0, Math.min(w, gapHalf));
+
+    // Linear ramp from 1 (idx <= c-wEff) down to 0 (idx >= c+wEff), 0.5 at c.
+    function ramp(idx, c) {
+      if (wEff === 0) return idx < c ? 1 : 0;
+      if (idx <= c - wEff) return 1;
+      if (idx >= c + wEff) return 0;
+      return 1 - (idx - (c - wEff)) / (2 * wEff);
+    }
+
+    const keyToMix = {};
+    const keyToAction = {};
+    ordered.forEach((key, idx) => {
+      const pRaise = ramp(idx, B1); // raise vs call
+      const pPlay = ramp(idx, B2);  // play vs fold
+      const raise = pPlay * pRaise;
+      const call = pPlay * (1 - pRaise);
+      const fold = 1 - pPlay;
+      keyToMix[key] = { raise, call, fold };
+      let dom = 'fold'; // dominant action, tie-break raise > call > fold
+      if (raise >= call && raise >= fold) dom = 'raise';
+      else if (call >= fold) dom = 'call';
+      keyToAction[key] = dom;
+    });
+
+    const pct = (n) => Math.round((n / N) * 100);
+    const spot = raisesBefore === 0 ? 'opening' : raisesBefore === 1 ? 'facing a raise' : 'facing a 3-bet+';
+    const label = `${position} · ${type} · ${spot} → plays ~${pct(playableCount)}% (raise ~${pct(raiseCount)}%, call ~${pct(callCount)}%)`;
+    return {
+      keyToAction, keyToMix,
+      meta: { type, position, raisesBefore, playablePct: pct(playableCount), raisePct: pct(raiseCount), callPct: pct(callCount), mixZoneWidth: wEff, label },
+    };
+  }
+
+  // The range a solid (TAG-baseline) player represents with this position + action context.
+  function heroRepresentedRange(position, ctx, type) {
+    const r = rangeFor(type || 'TAG', position, ctx);
+    return {
+      keyToAction: r.keyToAction, keyToMix: r.keyToMix,
+      meta: Object.assign({}, r.meta, { label: 'Your represented range — ' + r.meta.label }),
+    };
+  }
+
+  // Deterministic string -> [0,1). xmur3 seed + one mulberry32 finalize step. Pure, no deps.
+  function hash(str) {
+    let h = 1779033703 ^ str.length;
+    for (let i = 0; i < str.length; i++) {
+      h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+      h = (h << 13) | (h >>> 19);
+    }
+    h = Math.imul(h ^ (h >>> 16), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296; // unsigned / 2^32 -> [0,1)
+  }
+
+  // Decide an opponent's preflop action by looking up its ACTUAL hand in the range matrix.
+  // holeCards: [{rank,suit},{rank,suit}]. Returns 'raise' | 'call' | 'fold'.
+  function actionForHand(holeCards, type, position, ctx) {
+    const key = Engine.canonicalKey(holeCards[0], holeCards[1]);
+    const r = rangeFor(type, position, ctx || { raisesBefore: 0 });
+    const m = r.keyToMix[key];
+    // Pure cells: no RNG (identical to Level 1).
+    if (m.raise >= 1 - 1e-9) return 'raise';
+    if (m.call  >= 1 - 1e-9) return 'call';
+    if (m.fold  >= 1 - 1e-9) return 'fold';
+    // Mixed cell: deterministic seeded roll from the seat's ACTUAL cards + context.
+    const rb = (ctx && ctx.raisesBefore) || 0;
+    const seed = holeCards[0].rank + holeCards[0].suit + holeCards[1].rank + holeCards[1].suit
+               + '|' + type + '|' + position + '|' + rb;
+    const roll = hash(seed);
+    if (roll < m.raise) return 'raise';
+    if (roll < m.raise + m.call) return 'call';
+    return 'fold';
+  }
+
+  return { GRID, enumerateByRank, TYPE_PROFILE, POSITION_MULT, rangeFor, heroRepresentedRange, actionForHand, hash };
+});
+
+</script>
+  <script>
+// UMD: Node requires engine + evaluator; browser uses window.Engine / window.Evaluator.
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    module.exports = factory(require('./engine.js'), require('./evaluator.js'));
+  } else {
+    root.Postflop = factory(root.Engine, root.Evaluator);
+  }
+})(typeof self !== 'undefined' ? self : this, function (Engine, Evaluator) {
+  const { rankValue } = Engine;
+  const { evaluate } = Evaluator;
+
+  function clamp(n) { return Math.max(1, Math.min(10, Math.round(n))); }
+
+  function flushDrawPresent(cards) {
+    const bySuit = {};
+    for (const c of cards) bySuit[c.suit] = (bySuit[c.suit] || 0) + 1;
+    return Object.values(bySuit).some(n => n === 4); // exactly 4 (5 = made flush)
+  }
+
+  function straightDraws(values) {
+    const set = new Set(values);
+    if (set.has(14)) set.add(1);
+    let openEnded = false, gutshot = false;
+    for (let r = 2; r + 3 <= 14; r++) {
+      if (set.has(r) && set.has(r + 1) && set.has(r + 2) && set.has(r + 3)) {
+        if (r - 1 >= 1 && r + 4 <= 14) openEnded = true; else gutshot = true;
+      }
+    }
+    for (let high = 5; high <= 14; high++) {
+      const need = [high - 4, high - 3, high - 2, high - 1, high];
+      const have = need.filter(x => set.has(x));
+      if (have.length === 4) {
+        const missing = need.find(x => !set.has(x));
+        if (missing !== need[0] && missing !== need[4]) gutshot = true;
+      }
+    }
+    return { openEnded, gutshot: gutshot && !openEnded };
+  }
+
+  // Relative made-hand descriptor + base score from hole vs board.
+  function describeMade(hole, board, ev) {
+    const boardVals = board.map(c => rankValue(c.rank));
+    const topBoard = Math.max(...boardVals);
+    const minBoard = Math.min(...boardVals);
+    const isPocketPair = hole[0].rank === hole[1].rank;
+    const pocket = rankValue(hole[0].rank);
+
+    switch (ev.category) {
+      case 'straight-flush': return { made: 'straight flush', base: 10 };
+      case 'quads': return { made: 'quads', base: 10 };
+      case 'full-house': return { made: 'full house', base: 9 };
+      case 'flush': return { made: 'flush', base: 8 };
+      case 'straight': return { made: 'straight', base: 8 };
+      case 'trips':
+        return { made: isPocketPair && boardVals.includes(pocket) ? 'set' : 'three of a kind', base: 9 };
+      case 'two-pair': return { made: 'two pair', base: 7 };
+      case 'pair': {
+        const pairRank = ev.ranks[0];
+        if (isPocketPair) {
+          return pairRank > topBoard ? { made: 'overpair', base: 7 } : { made: 'underpair', base: 4 };
+        }
+        if (pairRank === topBoard) return { made: 'top pair', base: 6 };
+        if (pairRank === minBoard) return { made: 'bottom pair', base: 3 };
+        return { made: 'second pair', base: 4 };
+      }
+      default: return { made: 'no pair', base: 1 };
+    }
+  }
+
+  function clamp100(n) { return Math.max(1, Math.min(100, Math.round(n))); }
+
+  // 0-100 band per made-hand label. Strictly non-overlapping (lo[i] > hi[i-1]); the gaps
+  // between bands are intentional headroom for the draw bonus.
+  const CATEGORY_BANDS = {
+    'no pair':          [1, 17],
+    'bottom pair':      [18, 26],
+    'underpair':        [27, 35],
+    'second pair':      [36, 47],
+    'top pair':         [50, 64],
+    'overpair':         [65, 72],
+    'two pair':         [73, 83],
+    'set':              [84, 91],
+    'three of a kind':  [84, 91],
+    'straight':         [92, 93],
+    'flush':            [94, 96],
+    'full house':       [97, 98],
+    'quads':            [99, 99],
+    'straight flush':   [100, 100],
+  };
+  // Fallback by evaluator category (used if a made label is ever missing from the map).
+  const CATEGORY_BANDS_BY_CAT = {
+    'high-card': [1, 17], 'pair': [36, 47], 'two-pair': [73, 83], 'trips': [84, 91],
+    'straight': [92, 93], 'flush': [94, 96], 'full-house': [97, 98],
+    'quads': [99, 99], 'straight-flush': [100, 100],
+  };
+
+  // Combine ranks (each 0..14, most-significant first) into a normalized [0,1] via base-15.
+  function b15norm(ranks) {
+    let num = 0, max = 0;
+    for (const r of ranks) { num = num * 15 + (r || 0); max = max * 15 + 14; }
+    return max ? num / max : 0;
+  }
+
+  // Within-category position t in [0,1] from the ranks that VARY inside the category.
+  // CRITICAL: for non-pocket pairs the pair rank is fixed by board context, so the KICKERS must
+  // drive placement (dropping ev.ranks[0]); otherwise the dominant fixed pair rank swamps the
+  // kicker and TP+A vs TP+2 collapse to the same integer. Pocket pairs use the pair rank itself.
+  function withinT(made, ev) {
+    const r = ev.ranks;
+    switch (made) {
+      case 'top pair': case 'second pair': case 'bottom pair':
+        return b15norm([r[1], r[2], r[3]]);        // kickers only
+      case 'overpair': case 'underpair':
+        return b15norm([r[0]]);                     // pocket pair rank
+      case 'set': case 'three of a kind':
+        return b15norm([r[0], r[1], r[2]]);         // trip rank + kickers
+      case 'two pair':
+        return b15norm([r[0], r[1], r[2]]);         // high pair, low pair, kicker
+      case 'full house':
+        return b15norm([r[0], r[1]]);               // trips then pair
+      case 'straight': case 'straight flush':
+        return b15norm([r[0]]);                     // high card
+      default: // flush, no pair / high card
+        return b15norm([r[0], r[1], r[2], r[3], r[4]]);
+    }
+  }
+
+  // The band [lo, hi] for a made hand (label first, evaluator category fallback).
+  function bandFor(made, ev) {
+    return CATEGORY_BANDS[made] || CATEGORY_BANDS_BY_CAT[ev.category] || [1, 17];
+  }
+
+  // Ordered list of distinct band `lo` values, ascending — used to cap the draw bonus so it can
+  // lift a made hand into the gap toward the next category but never INTO the next category.
+  const _BAND_LOS = Array.from(new Set(
+    Object.values(CATEGORY_BANDS).map(b => b[0]).concat(Object.values(CATEGORY_BANDS_BY_CAT).map(b => b[0]))
+  )).sort((a, b) => a - b);
+
+  // Highest value the draw bonus may reach for a hand in band [lo, hi]: just below the next
+  // category's lo (so e.g. two-pair + draw can creep toward, but never into, the set band).
+  // Exception: pure air (no made pair) with a strong draw has equity comparable to a weak made
+  // pair, so it may rise toward — but not into — second pair, rather than being pinned just
+  // below bottom pair.
+  function drawCeiling(made, ev) {
+    if (made === 'no pair') return CATEGORY_BANDS['second pair'][0] - 1; // 35
+    const [, hi] = bandFor(made, ev);
+    const nextLo = _BAND_LOS.find(lo => lo > hi);
+    return nextLo == null ? 100 : nextLo - 1;
+  }
+
+  // Place a made hand inside its 0-100 band by the ranks that vary within its category.
+  function placeInBand(made, ev) {
+    const [lo, hi] = bandFor(made, ev);
+    return Math.round(lo + withinT(made, ev) * (hi - lo));
+  }
+
+  function postflopScore(hole, board) {
+    const all = hole.concat(board);
+    const ev = evaluate(all);
+    const { made, base } = describeMade(hole, board, ev);
+
+    const onRiver = board.length >= 5;
+    let draws = { flushDraw: false, openEnded: false, gutshot: false };
+    let bonus = 0;
+    if (!onRiver && ev.categoryRank < 4) { // no made straight/flush yet
+      const fd = ev.categoryRank < 5 && flushDrawPresent(all);
+      const sd = straightDraws(all.map(c => rankValue(c.rank)));
+      draws = { flushDraw: !!fd, openEnded: sd.openEnded, gutshot: sd.gutshot };
+      if (base < 8) {
+        if (fd) bonus += 2;
+        if (sd.openEnded) bonus += 2;
+        else if (sd.gutshot) bonus += 1;
+        bonus = Math.min(bonus, 3); // combined draw cap
+      }
+    }
+
+    // Finer 0-100 display score: band placement + finer draw bonus (river ignored, same guard).
+    let drawBonus100 = 0;
+    if (!onRiver && base < 8) {
+      if (draws.flushDraw) drawBonus100 += 12;
+      if (draws.openEnded) drawBonus100 += 12;
+      else if (draws.gutshot) drawBonus100 += 6;
+      drawBonus100 = Math.min(drawBonus100, 20);
+    }
+    // The draw bonus may lift the hand into the gap above its band, but NOT into the next
+    // category (so e.g. two pair + draw never displays as a straight/flush-tier 10.0).
+    const placed = placeInBand(made, ev);
+    const score100 = clamp100(Math.min(placed + drawBonus100, drawCeiling(made, ev)));
+
+    const score = clamp(base + bonus);
+    const drawText = draws.flushDraw ? ' + flush draw'
+      : draws.openEnded ? ' + open-ender' : draws.gutshot ? ' + gutshot' : '';
+    return { score, score100, made, draws, reason: `${made}${drawText} (${(score100 / 10).toFixed(1)}/10)` };
+  }
+
+  function boardTexture(board) {
+    const vals = board.map(c => rankValue(c.rank)).sort((a, b) => b - a);
+    const suits = {};
+    for (const c of board) suits[c.suit] = (suits[c.suit] || 0) + 1;
+    const counts = {};
+    for (const v of vals) counts[v] = (counts[v] || 0) + 1;
+    const paired = Object.values(counts).some(n => n >= 2);
+    const suitCounts = Object.values(suits);
+    const monotone = suitCounts.some(n => n === board.length) && board.length > 0;
+    const twoTone = suitCounts.some(n => n >= 2) && !monotone;
+    let connected = false;
+    const uniq = Array.from(new Set(vals)).sort((a, b) => a - b);
+    for (let i = 0; i + 2 < uniq.length + 1 && i + 2 < uniq.length; i++) {
+      if (uniq[i + 2] - uniq[i] <= 4) connected = true;
+    }
+    if (uniq.length >= 3) {
+      for (let i = 0; i + 2 < uniq.length; i++) {
+        if (uniq[i + 2] - uniq[i] <= 4) connected = true;
+      }
+    }
+    const highCard = vals.length > 0 && vals[0] >= 12;
+    return { paired, monotone, twoTone, connected, highCard };
+  }
+
+  return { postflopScore, boardTexture };
+});
+
+</script>
+  <script>
+// UMD: no dependencies.
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.SidePots = api;
+})(typeof self !== 'undefined' ? self : this, function () {
+  // contributions: { seat -> totalContributed } (includes folded players).
+  // liveSeats: seats eligible to win (not folded). Returns [{ amount, eligibleSeats }].
+  //
+  // A new pot LAYER is peeled at every distinct contribution level, but layers are only a real
+  // "side pot" when the set of LIVE eligible players shrinks (which happens when a live player is
+  // all-in for less and drops out of the higher layers). Levels created purely by FOLDED players'
+  // dead money have the same eligible set as the layer below them, so we merge adjacent layers
+  // with identical eligibility — otherwise a hand with no all-in (e.g. folded blinds) would
+  // wrongly show "Main + Side" pots. Result: exactly one pot per distinct live-eligible set.
+  function buildPots(contributions, liveSeats) {
+    const liveSet = new Set(liveSeats);
+    const entries = Object.keys(contributions)
+      .map(s => ({ seat: Number(s), amt: contributions[s] }))
+      .filter(e => e.amt > 0);
+    const levels = Array.from(new Set(entries.map(e => e.amt))).sort((a, b) => a - b);
+    const pots = [];
+    let prev = 0;
+    for (const level of levels) {
+      const layer = level - prev;
+      const contributors = entries.filter(e => e.amt >= level);
+      const amount = layer * contributors.length;
+      const eligibleSeats = contributors.map(e => e.seat).filter(s => liveSet.has(s));
+      if (amount > 0) {
+        const key = eligibleSeats.slice().sort((a, b) => a - b).join(',');
+        const last = pots[pots.length - 1];
+        // Merge into the previous pot if it has the SAME live-eligible set (dead-money layer).
+        if (last && last._key === key) last.amount += amount;
+        else pots.push({ amount, eligibleSeats, _key: key });
+      }
+      prev = level;
+    }
+    // Drop the internal merge key.
+    return pots.map(p => ({ amount: p.amount, eligibleSeats: p.eligibleSeats }));
+  }
+
+  // Order seats by closeness clockwise-left of the button (first to receive odd chips).
+  function seatsLeftOfButton(seats, buttonSeat, numSeats) {
+    return seats.slice().sort((a, b) => {
+      const da = ((a - buttonSeat - 1) % numSeats + numSeats) % numSeats;
+      const db = ((b - buttonSeat - 1) % numSeats + numSeats) % numSeats;
+      return da - db;
+    });
+  }
+
+  // pots: from buildPots. evals: { seat -> { value } }. Returns { payouts, breakdown, undistributed }.
+  // A pot with no eligible+evaluable seat is a CALLER-CONTRACT VIOLATION (the uncalled-bet refund
+  // in handflow must strip orphaned excess before buildPots). Rather than silently drop those
+  // chips, we surface them in `undistributed` so callers can fail loud and conservation is auditable.
+  function awardPots(pots, evals, buttonSeat, numSeats) {
+    const payouts = {};
+    const breakdown = [];
+    let undistributed = 0;
+    for (const pot of pots) {
+      const eligible = pot.eligibleSeats.filter(s => evals[s] !== undefined);
+      if (eligible.length === 0) { undistributed += pot.amount; continue; }
+      let best = -Infinity;
+      for (const s of eligible) best = Math.max(best, evals[s].value);
+      const winners = eligible.filter(s => evals[s].value === best);
+      const base = Math.floor(pot.amount / winners.length);
+      let remainder = pot.amount - base * winners.length;
+      const ordered = seatsLeftOfButton(winners, buttonSeat, numSeats);
+      for (const s of ordered) {
+        let share = base;
+        if (remainder > 0) { share += 1; remainder -= 1; }
+        payouts[s] = (payouts[s] || 0) + share;
+      }
+      breakdown.push({ amount: pot.amount, winners: ordered.slice() });
+    }
+    return { payouts, breakdown, undistributed };
+  }
+
+  return { buildPots, awardPots };
+});
+
+</script>
+  <script>
+// UMD: no dependencies.
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.Stacks = api;
+})(typeof self !== 'undefined' ? self : this, function () {
+  function createSession(config) {
+    const { numSeats, heroSeat, bigBlind } = config;
+    const minBB = config.minBB || 50;
+    const maxBB = config.maxBB || 200;
+    const rng = config.rng || Math.random;
+
+    const stacks = {};
+    for (let s = 0; s < numSeats; s++) stacks[s] = 0;
+    let heroNetTotal = 0;
+    let rebuys = [];
+
+    function randomStack() {
+      const bb = minBB + Math.floor(rng() * (maxBB - minBB + 1));
+      return bb * bigBlind;
+    }
+    function assignAll() { for (let s = 0; s < numSeats; s++) stacks[s] = randomStack(); }
+    function stackOf(seat) { return stacks[seat]; }
+    function setStack(seat, amount) { stacks[seat] = amount; }
+
+    function effectiveStack(actorSeat, otherLiveSeats) {
+      let maxOther = 0;
+      for (const s of otherLiveSeats) maxOther = Math.max(maxOther, stacks[s]);
+      return Math.min(stacks[actorSeat], maxOther);
+    }
+
+    function applyResult(payouts, contributions) {
+      payouts = payouts || {};
+      contributions = contributions || {};
+      // Hero net BEFORE any rebuy.
+      const heroPaid = contributions[heroSeat] || 0;
+      const heroWon = payouts[heroSeat] || 0;
+      heroNetTotal += heroWon - heroPaid;
+      for (let s = 0; s < numSeats; s++) {
+        stacks[s] = stacks[s] - (contributions[s] || 0) + (payouts[s] || 0);
+      }
+      rebuys = [];
+      for (let s = 0; s < numSeats; s++) {
+        if (stacks[s] < bigBlind) { stacks[s] = randomStack(); rebuys.push(s); }
+      }
+    }
+
+    return {
+      stacks: () => Object.assign({}, stacks),
+      assignAll, stackOf, setStack, effectiveStack, applyResult,
+      heroNet: () => heroNetTotal,
+      lastRebuys: () => rebuys.slice(),
+      randomStack,
+    };
+  }
+
+  return { createSession };
+});
+
+</script>
+  <script>
+// UMD: Node requires engine + players + ranges; browser uses window.Engine / window.Players / window.Ranges.
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    module.exports = factory(require('./engine.js'), require('./players.js'), require('./ranges.js'));
+  } else {
+    root.Betting = factory(root.Engine, root.Players, root.Ranges);
+  }
+})(typeof self !== 'undefined' ? self : this, function (Engine, Players, Ranges) {
+  const { ACTION_ORDER } = Engine;
+  const { PROFILES, decideActionByType } = Players;
+
+  // config: { seats:[{seat,position,type}], heroSeat, numSeats, smallBlind, bigBlind,
+  //   strengthOf(seat, board)->1..10,
+  //   mode:'preflop'|'postflop' (default 'preflop'),
+  //   startingPot (default 0), postflopOrder:[seat...], decide(E,profile,ctx)->action,
+  //   board:[], texture:{}, stacks:{seat->amount} }
+  function createBettingRound(config) {
+    const { seats, heroSeat, smallBlind, bigBlind, strengthOf } = config;
+    const mode = config.mode || 'preflop';
+    const decide = config.decide || decideActionByType;
+    const board = config.board || [];
+    const texture = config.texture || null;
+    const cardsOf = config.cardsOf || null; // preflop range-driven decisions when provided
+
+    // (a) Stack lookup with infinite default when no stacks config provided.
+    const INF = Number.MAX_SAFE_INTEGER;
+    const stacksCfg = config.stacks || null;
+    const stackOf = (seat) => (stacksCfg && stacksCfg[seat] != null) ? stacksCfg[seat] : INF;
+
+    // (b) Players keyed by seat (supports non-contiguous live seats postflop).
+    // Added stack, allIn, and lastActedBet fields to each player object.
+    // lastActedBet: the value of currentBet when this player last acted/matched,
+    // used to determine if a subsequent increment is a full raise (reopens) or sub-min all-in (no reopen).
+    const playerList = seats.map(info => ({
+      seat: info.seat, position: info.position, type: info.type,
+      status: 'active', committed: 0, lastAction: null,
+      stack: stackOf(info.seat), allIn: false, lastActedBet: 0,
+    }));
+    const bySeat = {};
+    playerList.forEach(p => { bySeat[p.seat] = p; });
+
+    const seatByPos = (pos) => seats.find(s => s.position === pos).seat;
+    const seqs = (mode === 'postflop' && config.postflopOrder)
+      ? config.postflopOrder.slice()
+      : ACTION_ORDER.map(pos => seats.find(s => s.position === pos).seat);
+
+    let pot = config.startingPot || 0;
+    let currentBet = 0;
+    let raisesSoFar = 0;
+    let acted = new Set();
+    let ptr = 0;
+    let complete = false;
+    let awaitingHeroFlag = false;
+    const log = [];
+
+    // prevBet tracks the bet level before the current raise (for min-raise size computation).
+    let prevBet = mode === 'preflop' ? bigBlind : 0;
+    // lastFullRaiseSize: the increment of the most recent FULL raise (not sub-min all-in).
+    // Used to determine whether a subsequent increment qualifies as a full raise (reopens action).
+    // Initialized to bigBlind (the minimum raise size when no raises have been made).
+    let lastFullRaiseSize = bigBlind;
+    function lastRaiseSize() { return Math.max(bigBlind, currentBet - prevBet); }
+
+    function post(pos, amount) {
+      const seat = seatByPos(pos);
+      const p = bySeat[seat];
+      const put = Math.min(amount, p.stack);
+      p.committed += put;
+      p.stack -= put;
+      if (p.stack === 0) p.allIn = true;
+      pot += put;
+    }
+    if (mode === 'preflop') {
+      // Blinds are posted but intentionally NOT added to `acted`, so the BB keeps its option.
+      post('SB', smallBlind);
+      post('BB', bigBlind);
+      currentBet = bigBlind;
+    }
+
+    function betSize() { return Math.max(bigBlind, Math.round((2 / 3) * pot)); }
+    function raiseSizeFor() {
+      if (mode === 'postflop') return currentBet === 0 ? betSize() : 3 * currentBet;
+      return raisesSoFar === 0 ? 3 * bigBlind : 3 * currentBet;
+    }
+
+    // (c) applyAction now supports opts (toAmount, allin), caps at stack, sets allIn flag.
+    function applyAction(seat, rawAction, opts) {
+      let action = rawAction;
+      if (action === 'check') action = 'call';
+      if (action === 'bet') action = 'raise';
+      if (action === 'allin') { action = 'raise'; opts = Object.assign({}, opts, { allin: true }); }
+      const p = bySeat[seat];
+      const raisesBefore = raisesSoFar;
+      if (action === 'fold') {
+        p.status = 'folded'; p.lastAction = 'fold';
+        log.push({ seat, position: p.position, type: p.type, action: 'fold', amount: 0, raisesBefore });
+        return;
+      }
+      const avail = p.stack; // chips the player can still put in
+      if (action === 'call') {
+        const toCall = currentBet - p.committed;
+        const put = Math.min(toCall, avail);
+        pot += put; p.committed += put; p.stack -= put;
+        if (p.stack === 0) p.allIn = true;
+        p.lastAction = p.allIn ? 'all-in' : (put === 0 ? 'check' : 'call');
+        p.lastActedBet = currentBet; // record the bet level at which this player acted
+        acted.add(seat);
+        log.push({ seat, position: p.position, type: p.type, action: p.lastAction, amount: put, raisesBefore });
+        return;
+      }
+      if (action === 'raise') {
+        // Target total this player will have committed after this action.
+        let target;
+        if (opts && opts.allin) target = p.committed + avail;
+        else if (opts && opts.toAmount != null) target = opts.toAmount;
+        else target = raiseSizeFor();
+
+        const put = Math.min(target - p.committed, avail);
+        const newCommitted = p.committed + put;
+        pot += put; p.committed = newCommitted; p.stack -= put;
+        if (p.stack === 0) p.allIn = true;
+
+        if (newCommitted > currentBet) {
+          // Determine whether this is a full min-raise (reopens action) or a short all-in.
+          const raiseAmount = newCommitted - currentBet;
+          const fullRaise = raiseAmount >= lastRaiseSize();
+          prevBet = currentBet; // update prevBet BEFORE reassigning currentBet
+          currentBet = newCommitted;
+          if (fullRaise || !p.allIn) {
+            // Full raise or non-all-in raise: reopen action.
+            lastFullRaiseSize = raiseAmount; // record this raise increment as the new full raise size
+            raisesSoFar += 1;
+            acted = new Set([seat]);
+            // Reset lastActedBet for all players (action is reopened; they'll record when they act next).
+            playerList.forEach(q => { if (q.seat !== seat) q.lastActedBet = 0; });
+          } else {
+            // Short all-in: does NOT reopen action. lastFullRaiseSize unchanged.
+            acted.add(seat);
+            // Do NOT reset lastActedBet for others — they retain their prior acted-at level.
+          }
+        } else {
+          // All-in for <= currentBet (treated as a call, no reopen).
+          acted.add(seat);
+        }
+        p.lastActedBet = currentBet; // record where this raiser/all-in ended up
+        p.lastAction = p.allIn ? 'all-in' : (raisesBefore === 0 && mode === 'postflop' ? 'bet' : 'raise');
+        log.push({ seat, position: p.position, type: p.type, action: p.lastAction, amount: put, raisesBefore });
+        return;
+      }
+      throw new Error('bad action: ' + rawAction);
+    }
+
+    function activePlayers() { return playerList.filter(p => p.status === 'active'); }
+
+    // (d) allSquare treats all-in players as satisfied.
+    function allSquare() {
+      return activePlayers().every(p => p.allIn || (acted.has(p.seat) && p.committed === currentBet));
+    }
+
+    function advance() {
+      let guard = 0;
+      while (true) {
+        if (++guard > seqs.length * 12) throw new Error('betting did not terminate');
+        if (activePlayers().length <= 1) {
+          const survivor = activePlayers()[0];
+          // Preflop BB option: folded to hero in the BB on an unraised pot -> offer the check.
+          if (mode === 'preflop' && survivor && survivor.seat === heroSeat
+              && raisesSoFar === 0 && !acted.has(heroSeat)) {
+            awaitingHeroFlag = true; return;
+          }
+          complete = true; awaitingHeroFlag = false; return;
+        }
+        // (d) If fewer than 2 players can still act (others all-in/folded), close the round.
+        const canAct = activePlayers().filter(p => !p.allIn);
+        if (canAct.length === 0) { complete = true; awaitingHeroFlag = false; return; }
+        if (allSquare()) { complete = true; awaitingHeroFlag = false; return; }
+        const seat = seqs[ptr % seqs.length];
+        ptr++;
+        const p = bySeat[seat];
+        // (d) Skip all-in players (they stay active/live but cannot act).
+        if (!p || p.status !== 'active' || p.allIn) continue;
+        if (acted.has(seat) && p.committed === currentBet) continue;
+        // Determine if this player faces only a sub-min all-in increment since they last acted.
+        // A player is in "call-or-fold-only" mode when they have already acted (acted.has(seat))
+        // and the increment since their lastActedBet is positive but less than lastFullRaiseSize.
+        const increment = currentBet - p.lastActedBet;
+        const callOrFoldOnly = acted.has(seat) && increment > 0 && increment < lastFullRaiseSize;
+        if (seat === heroSeat) { awaitingHeroFlag = true; return; }
+        // (h) Pass effDepthBB through if present in config.
+        const ctx = { raisesSoFar, facingBet: currentBet > p.committed, texture,
+                      effDepthBB: config.effDepthBB != null ? config.effDepthBB : undefined };
+        let action;
+        if (mode === 'preflop' && cardsOf && Ranges && Ranges.actionForHand) {
+          // Range-driven: look up this seat's actual hand in its type/position/action range.
+          action = Ranges.actionForHand(cardsOf(seat), p.type, p.position, { raisesBefore: raisesSoFar });
+        } else {
+          action = decide(strengthOf(seat, board), PROFILES[p.type], ctx);
+        }
+        // If player is in call-or-fold-only mode, downgrade 'raise' to 'call'.
+        if (callOrFoldOnly && (action === 'raise' || action === 'bet' || action === 'allin')) action = 'call';
+        applyAction(seat, action);
+      }
+    }
+
+    // (e) legalHeroOptions caps amounts at hero's stack and exposes all-in.
+    function legalHeroOptions() {
+      const p = bySeat[heroSeat];
+      const toCall = Math.min(currentBet - p.committed, p.stack);
+      const canRaiseByCap = raisesSoFar < 3;
+      const allInAmount = p.committed + p.stack;
+      // Determine if hero is in call-or-fold-only mode (faces only sub-min all-in increment).
+      const heroIncrement = currentBet - p.lastActedBet;
+      const callOrFoldOnly = acted.has(heroSeat) && heroIncrement > 0 && heroIncrement < lastFullRaiseSize;
+      const base = {
+        canFold: true,
+        allInAmount, canAllIn: p.stack > 0,
+      };
+      if (mode === 'postflop' && (currentBet - p.committed) === 0) {
+        return Object.assign(base, {
+          canCheck: true, canBet: canRaiseByCap && p.stack > 0 && !callOrFoldOnly,
+          betAmount: (canRaiseByCap && !callOrFoldOnly) ? Math.min(betSize(), allInAmount) : null,
+          canCall: false, callAmount: 0, isCheck: true,
+          canRaise: false, raiseToAmount: null,
+        });
+      }
+      const rawRaiseTo = raiseSizeFor();
+      return Object.assign(base, {
+        canCall: true, callAmount: toCall, isCheck: toCall === 0, canCheck: toCall === 0,
+        canRaise: canRaiseByCap && p.stack > toCall && !callOrFoldOnly,
+        raiseToAmount: (canRaiseByCap && !callOrFoldOnly) ? Math.min(rawRaiseTo, allInAmount) : null,
+        canBet: false, betAmount: null,
+      });
+    }
+
+    // (f) act forwards opts to applyAction.
+    function act(action, opts) {
+      if (!awaitingHeroFlag || complete) throw new Error('not hero turn');
+      // Reject raise/bet when hero is in call-or-fold-only mode (sub-min all-in increment only).
+      if (action === 'raise' || action === 'bet') {
+        const p = bySeat[heroSeat];
+        const heroIncrement = currentBet - p.lastActedBet;
+        const callOrFoldOnly = acted.has(heroSeat) && heroIncrement > 0 && heroIncrement < lastFullRaiseSize;
+        if (callOrFoldOnly) throw new Error('raise not allowed: facing sub-min all-in increment only');
+      }
+      awaitingHeroFlag = false;
+      applyAction(heroSeat, action, opts);
+      advance();
+    }
+
+    // (g) state includes stack and allIn for each player.
+    function state() {
+      return {
+        pot, currentBet, raisesSoFar, complete, mode, heroSeat,
+        toAct: awaitingHeroFlag ? heroSeat : null,
+        players: playerList.map(p => ({ ...p })),
+        log: log.map(e => ({ ...e })),
+      };
+    }
+
+    advance();
+
+    return {
+      state, log,
+      awaitingHero: () => awaitingHeroFlag && !complete,
+      legalHeroOptions, act,
+    };
+  }
+
+  return { createBettingRound };
+});
+
+</script>
+  <script>
+// UMD: Node requires players; browser uses window.Players.
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    module.exports = factory(require('./players.js'));
+  } else {
+    root.Coach = factory(root.Players);
+  }
+})(typeof self !== 'undefined' ? self : this, function (Players) {
+  const { PROFILES, decideActionByType } = Players;
+
+  function clamp(n) { return Math.max(1, Math.min(10, Math.round(n))); }
+
+  // Append a style "fit note" comparing heroAction to what heroType would do (typeAction),
+  // using an aggression ladder `tier`. Returns '' when heroType is missing/invalid.
+  function fitNote(heroAction, typeAction, heroType, tier) {
+    if (!heroType || !PROFILES[heroType]) return '';
+    if (heroAction === typeAction) return ` Fits your ${heroType} style.`;
+    const diff = (tier[heroAction] != null ? tier[heroAction] : 1) - (tier[typeAction] != null ? tier[typeAction] : 1);
+    return diff > 0
+      ? ` Looser than your ${heroType} style (${heroType} would ${typeAction}).`
+      : ` Tighter than your ${heroType} style (${heroType} would ${typeAction}).`;
+  }
+
+  // Eposition: hero's position-adjusted score (1-10). roundState: from betting state().
+  function heroLiveScore(Eposition, roundState) {
+    const r = roundState.raisesSoFar || 0;
+    let delta = 0, reason;
+    if (r >= 2) { delta = -4; reason = 'Facing a 3-bet+ — much weaker relatively.'; }
+    else if (r === 1) { delta = -2; reason = 'Facing a raise — relatively weaker.'; }
+    else {
+      const callers = (roundState.players || []).filter(p => p.status === 'active' && p.lastAction === 'call').length;
+      const log = roundState.log || [];
+      const priorNonFold = log.some(e => e.action !== 'fold');
+      if (callers > 0) { delta = -1; reason = `${callers} caller(s) before you — multiway, play tighter.`; }
+      else if (log.length > 0 && !priorNonFold) { delta = 1; reason = 'Folded to you — open for a steal.'; }
+      else { delta = 0; reason = 'Unraised so far — your opening spot.'; }
+    }
+    return { score: clamp(Eposition + delta), reason };
+  }
+
+  const REC_REASON = {
+    raise: 'strong enough to raise for value',
+    call: 'playable but not strong enough to raise',
+    fold: 'not strong enough to continue',
+  };
+
+  // Solid baseline line (TAG profile; position is already baked into E).
+  function recommendAction(E, raisesSoFar) {
+    const action = decideActionByType(E, PROFILES.TAG, { raisesSoFar });
+    return { action, reason: `A solid (TAG) line: ${action} — ${REC_REASON[action]}.` };
+  }
+
+  const TIER = { fold: 0, call: 1, raise: 2 };
+
+  function evaluateHeroDecision(heroAction, E, raisesSoFar, heroType) {
+    const rec = recommendAction(E, raisesSoFar).action;
+    let res;
+    if (heroAction === rec) res = { verdict: 'good', text: `Good ${heroAction} — ${REC_REASON[rec]}.` };
+    else {
+      const diff = TIER[heroAction] - TIER[rec];
+      res = diff > 0
+        ? { verdict: 'loose', text: `Loose ${heroAction} — a solid line is to ${rec} (${REC_REASON[rec]}).` }
+        : { verdict: 'tight', text: `Tight ${heroAction} — a solid line is to ${rec} (${REC_REASON[rec]}).` };
+    }
+    if (heroType && PROFILES[heroType]) {
+      const typeAction = decideActionByType(E, PROFILES[heroType], { raisesSoFar });
+      res.text += fitNote(heroAction, typeAction, heroType, TIER);
+    }
+    return res;
+  }
+
+  const PF_REASON = {
+    bet: 'strong enough to bet for value',
+    check: 'not strong enough to bet — control the pot',
+    call: 'enough to continue but not to raise',
+    raise: 'strong enough to raise for value',
+    fold: 'not strong enough to continue',
+  };
+
+  function recommendPostflop(E, context) {
+    const action = Players.decidePostflop(E, Players.PROFILES.TAG, {
+      facingBet: !!context.facingBet,
+      raisesSoFar: context.raisesSoFar || 0,
+      texture: context.texture || null,
+    });
+    return { action, reason: `A solid (TAG) line: ${action} — ${PF_REASON[action]}.` };
+  }
+
+  // Aggression ladder for postflop comparison.
+  const PF_TIER = { fold: 0, check: 1, call: 2, bet: 3, raise: 4 };
+
+  function evaluatePostflopDecision(heroAction, E, context, heroType) {
+    const rec = recommendPostflop(E, context).action;
+    let res;
+    if (heroAction === rec) res = { verdict: 'good', text: `Good ${heroAction} — ${PF_REASON[rec]}.` };
+    else {
+      const diff = (PF_TIER[heroAction] ?? 1) - (PF_TIER[rec] ?? 1);
+      res = diff > 0
+        ? { verdict: 'loose', text: `Loose ${heroAction} — a solid line is to ${rec} (${PF_REASON[rec]}).` }
+        : { verdict: 'tight', text: `Tight ${heroAction} — a solid line is to ${rec} (${PF_REASON[rec]}).` };
+    }
+    if (heroType && PROFILES[heroType]) {
+      const typeAction = Players.decidePostflop(E, PROFILES[heroType], {
+        facingBet: !!context.facingBet, raisesSoFar: context.raisesSoFar || 0, texture: context.texture || null,
+      });
+      res.text += fitNote(heroAction, typeAction, heroType, PF_TIER);
+    }
+    return res;
+  }
+
+  return { heroLiveScore, recommendAction, evaluateHeroDecision, recommendPostflop, evaluatePostflopDecision };
+});
+
+</script>
+  <script>
+// UMD: Node requires engine, betting, evaluator, postflop, players, sidepots; browser uses window.*.
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    module.exports = factory(
+      require('./engine.js'), require('./betting.js'), require('./evaluator.js'),
+      require('./postflop.js'), require('./players.js'), require('./sidepots.js'));
+  } else {
+    root.HandFlow = factory(root.Engine, root.Betting, root.Evaluator, root.Postflop, root.Players, root.SidePots);
+  }
+})(typeof self !== 'undefined' ? self : this, function (Engine, Betting, Evaluator, Postflop, Players, SidePots) {
+  const POSTFLOP_ORDER = ['SB', 'BB', 'UTG', 'MP', 'HJ', 'CO', 'BTN'];
+  const STREETS = ['preflop', 'flop', 'turn', 'river'];
+
+  function createHand(config) {
+    const { seats, heroSeat, buttonSeat, numSeats, smallBlind, bigBlind } = config;
+
+    // (a) Read stacks from config (null = no stacks / v3 behavior).
+    const stacks = config.stacks || null;
+
+    // Deal hole cards (2 per seat, seat-major) and prepare board cards from the deck.
+    const deck = config.deck || Engine.shuffle(Engine.createDeck());
+    const hands = {};
+    let di = 0;
+    for (let s = 0; s < numSeats; s++) hands[s] = [deck[di++], deck[di++]];
+    const flopCards = [deck[di++], deck[di++], deck[di++]];
+    const turnCard = deck[di++];
+    const riverCard = deck[di++];
+
+    const posOf = (seat) => seats.find(x => x.seat === seat).position;
+
+    // Effective strength: injected, or computed from cards + board.
+    const strengthOf = config.strengthOf || function (seat, board) {
+      return (board && board.length)
+        ? Postflop.postflopScore(hands[seat], board).score
+        : Engine.positionScore(Engine.rawScore(hands[seat][0], hands[seat][1]).score, posOf(seat)).score;
+    };
+
+    let streetIndex = 0;            // 0=preflop..3=river
+    let board = [];
+    let result = null;
+    let terminal = false;
+    let finalPayouts = {};
+    const totalCommitted = {};      // seat -> chips contributed across all streets (post-refund)
+    const grossCommitted = {};      // seat -> chips contributed across all streets (pre-refund, for conservation)
+    const refunds = {};             // seat -> chips refunded due to uncalled bets
+    for (let s = 0; s < numSeats; s++) {
+      totalCommitted[s] = 0;
+      grossCommitted[s] = 0;
+    }
+    let liveSeats = seats.map(s => s.seat); // updated after each round
+    let round = null;
+
+    // (a) remainingStack: what a seat has left to bet this hand (starting stack minus already committed).
+    function remainingStack(seat) {
+      if (!stacks) return undefined;
+      return stacks[seat] - (totalCommitted[seat] || 0);
+    }
+
+    // (b) effDepthBB: effective stack depth in big blinds (min of remaining stacks among live seats).
+    function effDepthBB() {
+      if (!stacks) return undefined;
+      const live = liveSeats.map(s => remainingStack(s)).filter(v => v != null);
+      if (!live.length) return undefined;
+      const eff = Math.min(...live);
+      return eff / bigBlind;
+    }
+
+    function makeRound(mode, liveOrderSeats, startingPot) {
+      const liveSet = new Set(liveOrderSeats);
+      const roundSeats = seats.filter(s => liveSet.has(s.seat));
+      const cfg = {
+        seats: roundSeats, heroSeat, numSeats: roundSeats.length,
+        smallBlind, bigBlind, strengthOf, board,
+        mode, startingPot,
+      };
+      // (a) Thread stacks into each round so betting can enforce all-in caps.
+      if (stacks) {
+        cfg.stacks = {};
+        for (const s of liveOrderSeats) cfg.stacks[s] = remainingStack(s);
+        // (b) Pass effDepthBB so opponents scale by depth.
+        cfg.effDepthBB = effDepthBB();
+      }
+      if (mode === 'preflop') {
+        // Range-driven preflop opponents: betting looks up each seat's actual hand.
+        cfg.cardsOf = (seat) => hands[seat];
+      } else if (mode === 'postflop') {
+        cfg.postflopOrder = POSTFLOP_ORDER
+          .map(pos => seats.find(s => s.position === pos).seat)
+          .filter(seat => liveSet.has(seat));
+        cfg.decide = Players.decidePostflop;
+        cfg.texture = Postflop.boardTexture(board);
+      }
+      return Betting.createBettingRound(cfg);
+    }
+
+    function absorbRound() {
+      // Fold contributions into totalCommitted and grossCommitted; update liveSeats.
+      const st = round.state();
+      for (const p of st.players) {
+        totalCommitted[p.seat] += p.committed;
+        grossCommitted[p.seat] += p.committed;
+        if (p.status === 'folded') liveSeats = liveSeats.filter(s => s !== p.seat);
+      }
+      return st;
+    }
+
+    // (c) Uncalled-bet refund: if the top contributor is strictly higher than all others,
+    // refund the excess over the second-highest contribution. Safe to call whenever a round
+    // closes (if top == second, excess is 0, no-op).
+    function applyUncalledRefund() {
+      const seats2 = Object.keys(totalCommitted).map(Number).filter(s => totalCommitted[s] > 0);
+      if (seats2.length < 2) {
+        // Only one contributor: nothing to refund (edge case: heads-up preflop fold).
+        return;
+      }
+      const sorted = seats2.slice().sort((a, b) => totalCommitted[b] - totalCommitted[a]);
+      const top = sorted[0], second = sorted[1];
+      const excess = totalCommitted[top] - totalCommitted[second];
+      if (excess > 0) {
+        totalCommitted[top] -= excess;
+        refunds[top] = (refunds[top] || 0) + excess;
+      }
+    }
+
+    function dealNextStreet() {
+      streetIndex += 1;
+      if (streetIndex === 1) board = flopCards.slice();
+      else if (streetIndex === 2) board = flopCards.concat([turnCard]);
+      else if (streetIndex === 3) board = flopCards.concat([turnCard, riverCard]);
+    }
+
+    // (e) Side-pot showdown via SidePots.buildPots + awardPots.
+    function goShowdown() {
+      const entries = liveSeats.map(seat => ({ seat, cards: hands[seat].concat(board) }));
+      const evals = {};
+      for (const e of entries) evals[e.seat] = Evaluator.evaluate(e.cards);
+      const pots = SidePots.buildPots(totalCommitted, liveSeats);
+      const { payouts: pay, breakdown, undistributed } = SidePots.awardPots(pots, evals, buttonSeat, numSeats);
+      if (undistributed !== 0) {
+        throw new Error('chip conservation violation: undistributed=' + undistributed + ' (refund logic bug)');
+      }
+      finalPayouts = Object.assign({}, refunds);
+      for (const s of Object.keys(pay)) finalPayouts[Number(s)] = (finalPayouts[Number(s)] || 0) + pay[s];
+      const headline = breakdown.length ? breakdown[0].winners : liveSeats;
+      const potTotal = pots.reduce((a, p) => a + p.amount, 0);
+      result = { pots, payouts: finalPayouts, breakdown, winners: headline,
+                 pot: potTotal,   // v3 compatibility: total pot at showdown
+                 board: board.slice(), byFold: false,
+                 reason: `${headline.map(posOf).join(', ')} win${headline.length > 1 ? ' (split)' : 's'} at showdown` };
+      terminal = true; streetIndex = 99; // showdown marker
+    }
+
+    // (f) Fold-win: pay the whole post-refund pot to the survivor.
+    function foldWin() {
+      applyUncalledRefund();
+      const seat = liveSeats[0];
+      const potTotal = Object.values(totalCommitted).reduce((a, b) => a + b, 0);
+      finalPayouts = Object.assign({}, refunds);
+      finalPayouts[seat] = (finalPayouts[seat] || 0) + potTotal;
+      result = { pots: [{ amount: potTotal, eligibleSeats: [seat] }], payouts: finalPayouts,
+                 breakdown: [{ amount: potTotal, winners: [seat] }], winners: [seat],
+                 pot: potTotal,   // v3 compatibility
+                 board: board.slice(), byFold: true, reason: `${posOf(seat)} wins (everyone folded)` };
+      terminal = true; streetIndex = 99;
+    }
+
+    // Advance through streets until awaiting the hero or terminal.
+    function progress() {
+      while (true) {
+        if (round.awaitingHero()) return;
+        if (!round.state().complete) return; // shouldn't happen (auto-advanced), safety
+        absorbRound();
+        // (c) Apply uncalled-bet refund after each round closes.
+        applyUncalledRefund();
+        if (liveSeats.length <= 1) { foldWin(); return; }
+        // (d) All-in run-out: if <2 players can still act, deal all remaining streets then showdown.
+        const canStillAct = liveSeats.filter(s => remainingStack(s) == null || remainingStack(s) > 0);
+        if (liveSeats.length >= 2 && canStillAct.length < 2) {
+          while (streetIndex < 3) { dealNextStreet(); }
+          goShowdown();
+          return;
+        }
+        if (streetIndex >= 3) { goShowdown(); return; }
+        dealNextStreet();
+        round = makeRound('postflop', liveSeats, round.state().pot);
+      }
+    }
+
+    // Kick off preflop.
+    round = makeRound('preflop', liveSeats, 0);
+    progress();
+
+    function streetName() {
+      if (terminal) return 'complete';
+      return STREETS[streetIndex] || 'showdown';
+    }
+
+    return {
+      street: streetName,
+      board: () => board.slice(),
+      result: () => result,
+      awaitingHero: () => !terminal && round.awaitingHero(),
+      legalHeroOptions: () => round.legalHeroOptions(),
+      act: (action, opts) => { round.act(action, opts); progress(); },
+      // (g) Expose payouts() and contributions() for chip conservation.
+      payouts: () => Object.assign({}, finalPayouts),
+      contributions: () => Object.assign({}, grossCommitted),
+      state: () => {
+        const st = round.state();
+        return {
+          street: streetName(), board: board.slice(), pot: st.pot,
+          currentBet: st.currentBet, raisesSoFar: st.raisesSoFar,
+          awaitingHero: !terminal && round.awaitingHero(),
+          toAct: st.toAct, result,
+          players: seats.map(s => {
+            const rp = st.players.find(p => p.seat === s.seat);
+            return {
+              seat: s.seat, position: s.position, type: s.type,
+              status: liveSeats.includes(s.seat) ? (rp ? rp.status : 'active') : 'folded',
+              lastAction: rp ? rp.lastAction : null,
+              committed: rp ? rp.committed : 0,
+              totalCommitted: totalCommitted[s.seat],
+              stack: rp ? rp.stack : 0,
+              allIn: rp ? rp.allIn : false,
+            };
+          }),
+        };
+      },
+      _debug: { hands: () => hands },
+    };
+  }
+
+  return { createHand };
+});
+
+</script>
+  <script>
+    const E = window.Engine, P = window.Players, PF = window.Postflop, EV = window.Evaluator,
+          C = window.Coach, HF = window.HandFlow, ST = window.Stacks, R = window.Ranges;
+    if (!E || !P || !PF || !EV || !C || !HF || !ST || !R) {
+      document.body.innerHTML = '<h1>NLH Trainer</h1><p style="text-align:center;max-width:600px;margin:20px auto">' +
+        'Could not load modules. Keep this file next to the <code>src</code> folder, or open the <code>dist/</code> build.</p>';
+      throw new Error('modules not loaded');
+    }
+
+    const NUM_SEATS = 7, HERO_SEAT = 0, SB = 5, BB = 5;
+    const SEAT_XY = [[360,372],[150,330],[70,190],[210,64],[510,64],[650,190],[570,330]];
+
+    let session = ST.createSession({ numSeats: NUM_SEATS, heroSeat: HERO_SEAT, bigBlind: BB, minBB: 100, maxBB: 100 });
+    session.assignAll();
+    let seatTypes = {};
+    function assignSeatTypes() {
+      seatTypes = {};
+      for (let s = 0; s < NUM_SEATS; s++) seatTypes[s] = s === HERO_SEAT ? null : P.randomType();
+    }
+    assignSeatTypes();
+    let buttonSeat = 6;
+    let heroType = 'TAG';
+    let hand = null, hero = null, revealed = new Set(), settled = false, rebuysToShow = [];
+
+    function posOf(seat) { return E.seatsWithPositions(NUM_SEATS, buttonSeat).find(s => s.seat === seat).position; }
+    function bb(amount) { return Math.round(amount / BB) + 'bb'; }
+    // Format a 1-100 fine score as one-decimal X.X (e.g. 100 -> "10.0", 83 -> "8.3").
+    function fmt10(score100) { return (score100 / 10).toFixed(1); }
+
+    function deal() {
+      buttonSeat = (buttonSeat + 1) % NUM_SEATS;
+      const seats = E.seatsWithPositions(NUM_SEATS, buttonSeat)
+        .map(s => ({ ...s, type: s.seat === HERO_SEAT ? null : seatTypes[s.seat] }));
+      const stacks = session.stacks();
+      hand = HF.createHand({ seats, heroSeat: HERO_SEAT, buttonSeat, numSeats: NUM_SEATS,
+        smallBlind: SB, bigBlind: BB, stacks });
+      hero = hand._debug.hands()[HERO_SEAT];
+      revealed = new Set(); settled = false;
+      setFeedback('', ''); document.getElementById('result').textContent = '';
+      render();
+    }
+
+    // New Game: fresh session (new stacks + bankroll $0), new opponents, random button.
+    function newGame() {
+      session = ST.createSession({ numSeats: NUM_SEATS, heroSeat: HERO_SEAT, bigBlind: BB, minBB: 100, maxBB: 100 });
+      session.assignAll();
+      assignSeatTypes();
+      buttonSeat = Math.floor(Math.random() * NUM_SEATS); // deal() advances it
+      deal();
+    }
+
+    function settleIfDone() {
+      if (settled) return;
+      const res = hand.result();
+      if (!res) return;
+      session.applyResult(hand.payouts(), hand.contributions());
+      rebuysToShow = session.lastRebuys();
+      settled = true;
+    }
+
+    function render() {
+      const st = hand.state();
+      const board = hand.board();
+      settleIfDone();
+      const table = document.getElementById('table');
+      table.innerHTML = '';
+
+      // session header
+      const net = session.heroNet();
+      document.getElementById('session').innerHTML =
+        `Session: <span class="net ${net >= 0 ? 'pos' : 'neg'}">${net >= 0 ? '+' : ''}$${net}</span>` +
+        ` · your stack $${session.stacks()[HERO_SEAT]} (${bb(session.stacks()[HERO_SEAT])})`;
+
+      const center = document.createElement('div');
+      center.className = 'center';
+      const boardHtml = board.map(c =>
+        `<div class="card ${E.suitColor(c.suit) === 'red' ? 'red' : ''}">${E.cardLabel(c)}</div>`).join('')
+        || '<span style="color:#cdeccd;font-size:12px">(preflop)</span>';
+      const res = hand.result();
+      const heroCommitted = (st.players.find(p => p.seat === HERO_SEAT) || {}).committed || 0;
+      const toCall = Math.max(0, st.currentBet - heroCommitted);
+      let potLine = `🟡 Pot $${st.pot}` +
+        (toCall > 0 ? ` <span class="tocall">· $${toCall} to call</span>` : '');
+      if (res && res.pots && res.pots.length > 1) {
+        potLine = res.pots.map((p, i) => (i === 0 ? 'Main $' : 'Side $') + p.amount).join(' · ');
+      }
+      center.innerHTML = `<div class="street">${st.street}</div>
+        <div class="pot">${potLine}</div><div class="board">${boardHtml}</div>`;
+      table.appendChild(center);
+
+      // Bet chips: each player's chips committed THIS street, shown in front of them toward the pot.
+      // (Hidden once the hand is settled / at showdown, since chips have moved to the pot.)
+      const TABLE_CX = 360, TABLE_CY = 210; // center of the 720x420 table
+      if (!settled) {
+        for (let s = 0; s < NUM_SEATS; s++) {
+          const pl = st.players.find(p => p.seat === s);
+          if (!pl || !pl.committed || pl.status === 'folded') continue;
+          const [sx, sy] = SEAT_XY[s];
+          // place the chip ~38% of the way from the seat toward the table center
+          const cx = sx + (TABLE_CX - sx) * 0.38;
+          const cy = sy + (TABLE_CY - sy) * 0.38;
+          const chip = document.createElement('div');
+          chip.className = 'betchip' + (pl.allIn ? ' allin' : '');
+          chip.style.left = cx + 'px';
+          chip.style.top = cy + 'px';
+          chip.textContent = (pl.allIn ? '🔴 ' : '🪙 ') + '$' + pl.committed;
+          table.appendChild(chip);
+        }
+      }
+
+      const winners = res ? res.winners : [];
+      const texture = board.length ? PF.boardTexture(board) : null;
+      const liveStacks = session.stacks();
+
+      for (let s = 0; s < NUM_SEATS; s++) {
+        const info = E.seatsWithPositions(NUM_SEATS, buttonSeat).find(x => x.seat === s);
+        const pl = st.players.find(p => p.seat === s);
+        const isHero = s === HERO_SEAT;
+        const showFace = isHero || (res && pl.status !== 'folded' && st.street === 'complete');
+        const cards = hand._debug.hands()[s];
+
+        const div = document.createElement('div');
+        div.className = 'seat' + (isHero ? ' hero' : '') + (pl.status === 'folded' ? ' folded' : '')
+          + (pl.allIn ? ' allin' : '') + (winners.includes(s) ? ' winner' : '');
+        div.style.left = SEAT_XY[s][0] + 'px';
+        div.style.top = SEAT_XY[s][1] + 'px';
+
+        const cardHtml = showFace
+          ? cards.map(c => `<div class="card ${E.suitColor(c.suit) === 'red' ? 'red' : ''}">${E.cardLabel(c)}</div>`).join('')
+          : '<div class="card back">x</div><div class="card back">x</div>';
+
+        let posText = info.position + (isHero ? ' (you)' : '');
+        if (info.position === 'BTN') posText = '🔘 ' + posText;
+        const typeText = isHero ? '' : ` <span class="type">${pl.type}</span>`;
+
+        // stack line: during the hand show the round's remaining stack; after settle show session stack
+        const shownStack = settled ? liveStacks[s] : pl.stack;
+        const stackLine = `<div class="stack">$${shownStack} (${bb(shownStack)})${pl.allIn ? ' · ALL-IN' : ''}</div>`;
+        const rebuyLine = (settled && rebuysToShow.includes(s)) ? '<div class="rebuy">💰 rebought</div>' : '';
+
+        let badge;
+        if (isHero) {
+          const liveLabel = board.length
+            ? fmt10(PF.postflopScore(cards, board).score100) + '/10'
+            : fmt10(E.rawScore(cards[0], cards[1]).score100) + '/10';
+          badge = `<span class="score live">live ${liveLabel}</span>`;
+        } else {
+          const la = pl.lastAction;
+          if (la && la !== 'fold') {
+            const read = board.length
+              ? P.perceivedRead(P.PROFILES[pl.type], la === 'all-in' ? 'raise' : la, st.raisesSoFar, { street: st.street, texture })
+              : P.perceivedRead(P.PROFILES[pl.type], la === 'all-in' ? 'raise' : la, st.raisesSoFar);
+            badge = read.score == null ? '<span class="score folded">folded</span>'
+              : `<span class="score read">read ${read.score}/10</span>`;
+          } else if (pl.status === 'folded') {
+            badge = '<span class="score folded">folded</span>';
+          } else { badge = '<span class="score read">read –</span>'; }
+          if (showFace && !isHero) {
+            const trueLabel = board.length
+              ? fmt10(PF.postflopScore(cards, board).score100) + '/10'
+              : fmt10(E.rawScore(cards[0], cards[1]).score100) + '/10';
+            const ev = EV.evaluate(cards.concat(board));
+            badge += ` <span class="score true">true ${trueLabel}${board.length ? ' (' + ev.category + ')' : ''}</span>`;
+          }
+        }
+
+        // Action word only; the dollar amount lives on the bet chip in front of the seat.
+        const last = pl.lastAction ? `<div class="act">${pl.lastAction}</div>` : '';
+        div.innerHTML = `<div class="pos">${posText}${typeText}</div>${stackLine}
+          <div class="cards">${cardHtml}</div><div class="badge">${badge}</div>${last}${rebuyLine}`;
+        if (!isHero) { div.style.cursor = 'pointer'; div.addEventListener('click', () => { showOpponentRange(s); }); }
+        table.appendChild(div);
+      }
+
+      renderControls();
+      renderResult();
+      renderHeroInfo();
+      renderHeroTypeSelector();
+    }
+
+    function renderHeroTypeSelector() {
+      const host = document.getElementById('heroTypeSel');
+      if (!host) return;
+      host.innerHTML = '';
+      for (const t of P.TYPES) {
+        const b = document.createElement('button');
+        b.className = 'typebtn' + (t === heroType ? ' active' : '');
+        b.textContent = t;
+        b.addEventListener('click', () => { heroType = t; render(); });
+        host.appendChild(b);
+      }
+    }
+
+    function toggle(seat) { if (revealed.has(seat)) revealed.delete(seat); else revealed.add(seat); render(); }
+
+    function closeOverlay() { const o = document.getElementById('rangeOverlay'); if (o) o.remove(); }
+
+    // Render a 13x13 range matrix overlay for a given range result {keyToAction, meta}.
+    // If `cards` is provided (only at hand end), also show the opponent's actual hole cards.
+    function showRangeMatrix(range, cards) {
+      closeOverlay();
+      const overlay = document.createElement('div');
+      overlay.id = 'rangeOverlay';
+      overlay.className = 'overlay';
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) closeOverlay(); });
+
+      const box = document.createElement('div');
+      box.className = 'matrixbox';
+      const legend = '<span class="legend">'
+        + '<b style="background:#d8643c"></b>raise/3-bet'
+        + '<b style="background:#3c79d8"></b>call/limp'
+        + '<b style="background:#33402f"></b>fold</span>';
+      const cardsHtml = cards
+        ? '<div class="revealcards">Actual hand: '
+          + cards.map(c => `<div class="card ${E.suitColor(c.suit) === 'red' ? 'red' : ''}">${E.cardLabel(c)}</div>`).join('')
+          + '</div>'
+        : '';
+      box.innerHTML = '<h3>' + range.meta.label + '</h3>' + cardsHtml + legend;
+
+      const ACTION_COLORS = { raise: '#d8643c', call: '#3c79d8', fold: '#33402f' };
+      const grid = document.createElement('div');
+      grid.className = 'grid13';
+      let anyMixed = false;
+      for (let i = 0; i < 13; i++) {
+        for (let j = 0; j < 13; j++) {
+          const cell = R.GRID[i][j];
+          const action = range.keyToAction[cell.key];
+          const mix = range.keyToMix && range.keyToMix[cell.key];
+          const isMixed = mix && Math.max(mix.raise, mix.call, mix.fold) < 1 - 1e-9;
+          const d = document.createElement('div');
+          if (isMixed) {
+            anyMixed = true;
+            const rPct = Math.round(mix.raise * 100);
+            const cPct = Math.round((mix.raise + mix.call) * 100);
+            d.className = 'gcell mixed';
+            d.style.background = 'linear-gradient(135deg, '
+              + ACTION_COLORS.raise + ' 0 ' + rPct + '%, '
+              + ACTION_COLORS.call + ' ' + rPct + '% ' + cPct + '%, '
+              + ACTION_COLORS.fold + ' ' + cPct + '% 100%)';
+            d.textContent = cell.key;
+            const badge = document.createElement('span');
+            badge.className = 'mixpct';
+            badge.textContent = Math.round(mix[action] * 100) + '%';
+            d.appendChild(badge);
+          } else {
+            d.className = 'gcell ' + action;
+            d.textContent = cell.key;
+          }
+          grid.appendChild(d);
+        }
+      }
+      box.appendChild(grid);
+      if (anyMixed) {
+        const note = document.createElement('div');
+        note.className = 'legend2';
+        note.textContent = 'Split cells = mixed frequency (raise → call → fold along the diagonal); % = the most-likely action.';
+        box.appendChild(note);
+      }
+
+      const close = document.createElement('button');
+      close.className = 'closebtn'; close.textContent = 'Close';
+      close.addEventListener('click', closeOverlay);
+      box.appendChild(close);
+
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+    }
+
+    // Opponent click -> show THEIR range from type+position+latest preflop action context.
+    function showOpponentRange(seat) {
+      const st = hand.state();
+      const info = E.seatsWithPositions(NUM_SEATS, buttonSeat).find(x => x.seat === seat);
+      // find this seat's latest preflop log entry for raisesBefore (default 0 if none yet)
+      let raisesBefore = 0;
+      const log = st.log || (st.players && st.players.log) || [];
+      // handflow state() does not expose the round log directly; use raisesSoFar as the live ctx
+      raisesBefore = st.raisesSoFar || 0;
+      const pl = st.players.find(p => p.seat === seat);
+      const range = R.rangeFor(pl.type, info.position, { raisesBefore });
+      // Only at hand end (showdown/complete) also reveal their actual cards.
+      const res = hand.result();
+      const cards = (res && st.street === 'complete') ? hand._debug.hands()[seat] : null;
+      showRangeMatrix(range, cards);
+    }
+
+    function renderControls() {
+      const box = document.getElementById('controls');
+      box.innerHTML = '';
+      if (!hand.awaitingHero()) return;
+      const opt = hand.legalHeroOptions();
+      const st = hand.state();
+      const pot = st.pot;
+      const heroPl = st.players.find(p => p.seat === HERO_SEAT);
+      const myStack = heroPl.stack;
+      const mk = (label, fn, cls) => {
+        const b = document.createElement('button'); b.textContent = label;
+        if (cls) b.className = cls; b.addEventListener('click', fn); box.appendChild(b);
+      };
+      mk('Fold', () => act('fold'), 'secondary');
+      if (opt.canCheck) mk('Check', () => act('check'));
+      if (opt.canCall) mk('Call $' + opt.callAmount, () => act('call'));
+      // pot-fraction sizing (bet or raise), each clamped to stack; collapse to All-in if >= stack
+      const facingBet = !opt.canCheck && opt.canCall;
+      const sizes = [['½ pot', 0.5], ['¾ pot', 0.75], ['pot', 1]];
+      const allInTotal = opt.allInAmount;
+      if (opt.canBet || opt.canRaise) {
+        for (const [lbl, frac] of sizes) {
+          const target = Math.round((facingBet ? (opt.callAmount + Math.round(frac * (pot + opt.callAmount))) : Math.round(frac * pot)));
+          const toAmount = Math.min(Math.max(target, (opt.raiseToAmount || opt.betAmount || BB)), allInTotal);
+          if (toAmount >= allInTotal) continue; // collapses into All-in button
+          const action = opt.canBet ? 'bet' : 'raise';
+          mk((opt.canBet ? 'Bet ' : 'Raise ') + lbl + ' ($' + toAmount + ')', () => act(action, { toAmount }));
+        }
+      }
+      if (opt.canAllIn) mk('All-in $' + allInTotal, () => act('allin'), 'danger');
+    }
+
+    function act(action, opts) {
+      const st = hand.state();
+      const board = hand.board();
+      const E0 = board.length ? PF.postflopScore(hero, board).score
+        : E.positionScore(E.rawScore(hero[0], hero[1]).score, posOf(HERO_SEAT)).score;
+      const a = action === 'allin' ? (board.length ? (st.currentBet > 0 ? 'raise' : 'bet') : 'raise') : action;
+      const fb = board.length
+        ? C.evaluatePostflopDecision(a === 'check' ? 'check' : a, E0, { facingBet: st.currentBet > 0, raisesSoFar: st.raisesSoFar, texture: board.length ? PF.boardTexture(board) : null }, heroType)
+        : C.evaluateHeroDecision((a === 'check' || a === 'bet') ? (a === 'bet' ? 'raise' : 'call') : a, E0, st.raisesSoFar, heroType);
+      hand.act(action, opts);
+      setFeedback(fb.text, fb.verdict);
+      render();
+    }
+
+    function renderResult() {
+      const res = hand.result();
+      if (!res) { document.getElementById('result').textContent = ''; return; }
+      let txt = `🏆 ${res.reason}`;
+      if (res.breakdown && res.breakdown.length > 1) {
+        txt += ' — ' + res.breakdown.map((b, i) =>
+          `${i === 0 ? 'main' : 'side'} $${b.amount} → ${b.winners.map(posOf).join('/')}`).join(', ');
+      } else {
+        const total = res.pots ? res.pots.reduce((a, p) => a + p.amount, 0) : 0;
+        txt += ` — pot $${total}`;
+      }
+      document.getElementById('result').textContent = txt;
+    }
+
+    function renderHeroInfo() {
+      const board = hand.board();
+      if (board.length) {
+        const r = PF.postflopScore(hero, board);
+        document.getElementById('heroInfo').innerHTML =
+          `Your hand: <b>${r.made}</b> — <b>${fmt10(r.score100)}/10</b><br><span class="reason">${r.reason}</span>`;
+      } else {
+        const raw = E.rawScore(hero[0], hero[1]);
+        document.getElementById('heroInfo').innerHTML =
+          `Your hand <b>${raw.key}</b> — <b>${fmt10(raw.score100)}/10</b> <span class="reason">(rank #${raw.rank} of 169)</span>`;
+      }
+    }
+
+    function setFeedback(text, verdict) {
+      const el = document.getElementById('feedback');
+      el.textContent = text || ''; el.className = 'feedback' + (verdict ? ' ' + verdict : '');
+    }
+
+    document.getElementById('dealBtn').addEventListener('click', deal);
+    document.getElementById('newGameBtn').addEventListener('click', newGame);
+    document.getElementById('myRangeBtn').addEventListener('click', function () {
+      const st = hand.state();
+      const heroPos = posOf(HERO_SEAT);
+      showRangeMatrix(R.heroRepresentedRange(heroPos, { raisesBefore: st.raisesSoFar || 0 }, heroType));
+    });
+    deal();
+  </script>
+</body>
+</html>
