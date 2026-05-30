@@ -1035,6 +1035,100 @@
 
 </script>
   <script>
+// UMD: Node requires engine + evaluator + postflop + ranges; browser uses window.*.
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    module.exports = factory(require('./engine.js'), require('./evaluator.js'),
+      require('./postflop.js'), require('./ranges.js'));
+  } else {
+    root.Equity = factory(root.Engine, root.Evaluator, root.Postflop, root.Ranges);
+  }
+})(typeof self !== 'undefined' ? self : this, function (Engine, Evaluator, Postflop, Ranges) {
+  const SUITS4 = ['c', 'd', 'h', 's'];
+
+  // Rank (1..169) for a canonical key, from the range grid (lower = stronger).
+  const RANK_BY_KEY = {};
+  for (const cell of Ranges.GRID.flat()) RANK_BY_KEY[cell.key] = cell.rank;
+
+  // Concrete 2-card combos for a key (pair, suited, offsuit). Canonical combo first; alternates
+  // are used only when the canonical collides with hero/board cards.
+  function combosForKey(key) {
+    const pair = key.length === 2;
+    const hi = key[0], lo = key[1];
+    const out = [];
+    if (pair) {
+      for (let i = 0; i < SUITS4.length; i++) for (let j = i + 1; j < SUITS4.length; j++)
+        out.push([{ rank: hi, suit: SUITS4[i] }, { rank: lo, suit: SUITS4[j] }]);
+    } else if (key.endsWith('s')) {
+      for (const s of SUITS4) out.push([{ rank: hi, suit: s }, { rank: lo, suit: s }]);
+    } else { // offsuit
+      for (const a of SUITS4) for (const b of SUITS4) if (a !== b)
+        out.push([{ rank: hi, suit: a }, { rank: lo, suit: b }]);
+    }
+    return out;
+  }
+
+  function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+
+  // Pairwise preflop equity heuristic: even a rank-dominated hand stays "live" (~33%+), so we
+  // model each matchup as a smooth function of the rank gap rather than a binary beat. equity vs
+  // the range is the average of those pairwise matchups. Deterministic; no card enumeration.
+  function equityPreflop(heroCards, rangeKeys) {
+    if (!rangeKeys.length) return 0.5;
+    const heroRank = RANK_BY_KEY[Engine.canonicalKey(heroCards[0], heroCards[1])];
+    let sum = 0;
+    for (const k of rangeKeys) {
+      const gap = (RANK_BY_KEY[k] - heroRank) / 168; // >0 when hero is stronger (lower rank)
+      sum += clamp(0.5 + 1.1 * gap, 0.12, 0.92);
+    }
+    return clamp(sum / rangeKeys.length, 0.05, 0.95);
+  }
+
+  function cardKey(c) { return c.rank + c.suit; }
+
+  function equityPostflop(heroCards, board, rangeKeys) {
+    const used = new Set(heroCards.concat(board).map(cardKey));
+    const heroPS = Postflop.postflopScore(heroCards, board);
+    const heroScore = heroPS.score100;
+
+    let beat = 0, n = 0;
+    for (const k of rangeKeys) {
+      // first combo for this key that doesn't collide with hero/board
+      let combo = null;
+      for (const cand of combosForKey(k)) {
+        if (!cand.some(c => used.has(cardKey(c)))) { combo = cand; break; }
+      }
+      if (!combo) continue; // fully blocked -> skip
+      const vs = Postflop.postflopScore(combo, board).score100;
+      if (vs < heroScore) beat += 1;
+      else if (vs === heroScore) beat += 0.5;
+      n += 1;
+    }
+    const showdownFrac = n === 0 ? 0.5 : beat / n;
+
+    // Draw equity (hero's outs; none on the river). Rule of 4 (flop) / 2 (turn).
+    const d = heroPS.draws || {};
+    const onRiver = board.length >= 5, onTurn = board.length === 4;
+    let drawEq = 0;
+    if (!onRiver) {
+      let outs = (d.flushDraw ? 9 : 0) + (d.openEnded ? 8 : d.gutshot ? 4 : 0);
+      outs = Math.min(outs, 15);
+      drawEq = onTurn ? Math.min(outs * 0.02, 0.30) : Math.min(outs * 0.04, 0.55);
+    }
+    const equity = showdownFrac + drawEq * (1 - showdownFrac);
+    return clamp(equity, 0.02, 0.98);
+  }
+
+  function equityVsRange(heroCards, board, rangeKeys, opts) {
+    if (!board || board.length === 0) return equityPreflop(heroCards, rangeKeys);
+    return equityPostflop(heroCards, board, rangeKeys);
+  }
+
+  return { equityVsRange, combosForKey, equityPreflop };
+});
+
+</script>
+  <script>
 // UMD: no dependencies.
 (function (root, factory) {
   const api = factory();
@@ -1451,14 +1545,15 @@
 
 </script>
   <script>
-// UMD: Node requires players; browser uses window.Players.
+// UMD: Node requires players + ranges + equity + postflop + engine; browser uses window.*.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./players.js'));
+    module.exports = factory(require('./players.js'), require('./ranges.js'),
+      require('./equity.js'), require('./postflop.js'), require('./engine.js'));
   } else {
-    root.Coach = factory(root.Players);
+    root.Coach = factory(root.Players, root.Ranges, root.Equity, root.Postflop, root.Engine);
   }
-})(typeof self !== 'undefined' ? self : this, function (Players) {
+})(typeof self !== 'undefined' ? self : this, function (Players, Ranges, Equity, Postflop, Engine) {
   const { PROFILES, decideActionByType } = Players;
 
   function clamp(n) { return Math.max(1, Math.min(10, Math.round(n))); }
@@ -1561,7 +1656,93 @@
     return res;
   }
 
-  return { heroLiveScore, recommendAction, evaluateHeroDecision, recommendPostflop, evaluatePostflopDecision };
+  const ACT_TIER = { fold: 0, check: 1, call: 2, bet: 3, raise: 4 };
+  function pctOf(x) { return Math.round(x * 100); }
+
+  // Primary aggressor: last raiser/bettor among active non-hero players (else top contributor).
+  function findAggressor(ts) {
+    const opps = ts.players.filter(p => p.seat !== ts.heroSeat && p.status === 'active');
+    const aggressive = opps.filter(p => ['raise', 'bet', 'all-in'].includes(p.lastAction));
+    const pool = aggressive.length ? aggressive : opps.filter(p => p.committed > 0);
+    if (!pool.length) return null;
+    return pool.reduce((a, b) => (b.committed > a.committed ? b : a));
+  }
+
+  function verdictFor(heroAction, rec) {
+    if (heroAction === rec) return 'good';
+    return (ACT_TIER[heroAction] != null ? ACT_TIER[heroAction] : 1)
+         > (ACT_TIER[rec] != null ? ACT_TIER[rec] : 1) ? 'loose' : 'tight';
+  }
+
+  function heroPositionOf(ts) {
+    const h = ts.players.find(p => p.seat === ts.heroSeat) || {};
+    return h.position || 'CO';
+  }
+  function preflopE(heroCards, ts) {
+    return Engine.positionScore(Engine.rawScore(heroCards[0], heroCards[1]).score, heroPositionOf(ts)).score;
+  }
+  // Map a 5-way action onto the preflop ladder the fit-note expects (no check/bet preflop).
+  function normalizeForLadder(action, hasBoard) {
+    if (hasBoard) return action;
+    if (action === 'check') return 'call';
+    if (action === 'bet') return 'raise';
+    return action;
+  }
+
+  // Range- & opponent-aware tip. heroAction normalized to fold|check|call|bet|raise.
+  function coachTip(heroAction, heroCards, board, ts, heroType) {
+    board = board || [];
+    const hero = ts.players.find(p => p.seat === ts.heroSeat) || { committed: 0 };
+    const toCall = Math.max(0, (ts.currentBet || 0) - (hero.committed || 0));
+    const activeOpps = ts.players.filter(p => p.seat !== ts.heroSeat && p.status === 'active').length;
+    const aggressor = toCall > 0 ? findAggressor(ts) : null;
+
+    let rec, text;
+    if (aggressor && Ranges && Equity) {
+      // The aggressor's range is what they had when THEY raised: raises before their action =
+      // raisesSoFar - 1 (a lone open-raiser -> opening range, not a 3-bet range).
+      const aggRaisesBefore = Math.max(0, (ts.raisesSoFar || 0) - 1);
+      const r = Ranges.rangeFor(aggressor.type, aggressor.position, { raisesBefore: aggRaisesBefore });
+      let keys = Object.keys(r.keyToAction).filter(k => r.keyToAction[k] === 'raise');
+      if (!keys.length) keys = Object.keys(r.keyToAction).filter(k => r.keyToAction[k] !== 'fold');
+      const equity = Equity.equityVsRange(heroCards, board, keys, {});
+      const required = toCall / ((ts.pot || 0) + toCall);
+      const extra = Math.max(0, activeOpps - 1);
+      const requiredAdj = Math.min(0.95, required * (1 + 0.10 * extra));
+      if (equity >= requiredAdj + 0.15) rec = 'raise';
+      else if (equity >= requiredAdj) rec = 'call';
+      else rec = 'fold';
+      const where = board.length ? `On ${board.map(c => c.rank + c.suit).join('')} ` : '';
+      const recPhrase = rec === 'raise' ? 'raising for value is best'
+        : rec === 'call' ? 'a call is fine' : 'folding is closest';
+      const multi = extra > 0 ? ` (×${(1 + 0.10 * extra).toFixed(1)} multiway)` : '';
+      text = `${where}vs the ${aggressor.position} ${aggressor.type}'s ~${r.meta.playablePct}% range `
+        + `you have ~${pctOf(equity)}% equity; pot odds need ~${pctOf(requiredAdj)}%${multi} — ${recPhrase}.`;
+    } else if (board.length) {
+      const ps = Postflop.postflopScore(heroCards, board);
+      rec = ps.score100 >= 55 ? 'bet' : 'check';
+      text = `No bet to you — with ${ps.made} (~${(ps.score100 / 10).toFixed(1)}/10), `
+        + `${rec === 'bet' ? 'bet for value' : 'checking to control the pot'} is standard.`;
+    } else {
+      const raw = Engine.rawScore(heroCards[0], heroCards[1]);
+      rec = recommendAction(preflopE(heroCards, ts), ts.raisesSoFar || 0).action;
+      const recPhrase = rec === 'raise' ? 'open for a raise' : rec === 'call' ? 'a call/limp is ok' : 'folding is fine';
+      text = `Opening spot (${raw.key}) — a solid line is to ${recPhrase}.`;
+    }
+
+    const verdict = verdictFor(heroAction, rec);
+    if (heroType && PROFILES[heroType]) {
+      const tier = board.length ? PF_TIER : TIER;
+      const typeAction = board.length
+        ? Players.decidePostflop(Postflop.postflopScore(heroCards, board).score, PROFILES[heroType],
+            { facingBet: toCall > 0, raisesSoFar: ts.raisesSoFar || 0, texture: Postflop.boardTexture(board) })
+        : decideActionByType(preflopE(heroCards, ts), PROFILES[heroType], { raisesSoFar: ts.raisesSoFar || 0 });
+      text += fitNote(normalizeForLadder(heroAction, board.length), typeAction, heroType, tier);
+    }
+    return { verdict, text };
+  }
+
+  return { heroLiveScore, recommendAction, evaluateHeroDecision, recommendPostflop, evaluatePostflopDecision, coachTip };
 });
 
 </script>
@@ -2139,12 +2320,14 @@
     function act(action, opts) {
       const st = hand.state();
       const board = hand.board();
-      const E0 = board.length ? PF.postflopScore(hero, board).score
-        : E.positionScore(E.rawScore(hero[0], hero[1]).score, posOf(HERO_SEAT)).score;
-      const a = action === 'allin' ? (board.length ? (st.currentBet > 0 ? 'raise' : 'bet') : 'raise') : action;
-      const fb = board.length
-        ? C.evaluatePostflopDecision(a === 'check' ? 'check' : a, E0, { facingBet: st.currentBet > 0, raisesSoFar: st.raisesSoFar, texture: board.length ? PF.boardTexture(board) : null }, heroType)
-        : C.evaluateHeroDecision((a === 'check' || a === 'bet') ? (a === 'bet' ? 'raise' : 'call') : a, E0, st.raisesSoFar, heroType);
+      const heroCommitted = (st.players.find(p => p.seat === HERO_SEAT) || {}).committed || 0;
+      // Normalize the action to fold|check|call|bet|raise for the range-aware coach.
+      const aNorm = action === 'allin'
+        ? (board.length ? (st.currentBet > heroCommitted ? 'raise' : 'bet') : 'raise')
+        : action;
+      // Compute the tip on the state the hero FACED (before applying the action).
+      const tState = Object.assign({}, st, { heroSeat: HERO_SEAT });
+      const fb = C.coachTip(aNorm, hero, board, tState, heroType);
       hand.act(action, opts);
       setFeedback(fb.text, fb.verdict);
       render();
