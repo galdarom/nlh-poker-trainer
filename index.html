@@ -1557,6 +1557,9 @@
           }
           action = decide(strengthOf(seat, board), PROFILES[p.type], ctx);
         }
+        // Never fold a free option: with no bet to call (toCall 0), a 'fold' becomes a check.
+        // (Fixes the BB/SB and limped-pot case where a range/threshold returns fold for free.)
+        if (action === 'fold' && currentBet === p.committed) action = 'call';
         // If player is in call-or-fold-only mode, downgrade 'raise' to 'call'.
         if (callOrFoldOnly && (action === 'raise' || action === 'bet' || action === 'allin')) action = 'call';
         applyAction(seat, action);
