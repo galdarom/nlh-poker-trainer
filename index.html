@@ -522,6 +522,10 @@
   };
   const TYPES = ['LP', 'LAG', 'TP', 'TAG'];
 
+  // 3A: equity-vs-pot-odds margins. Positive = calls looser (needs less than strict pot odds).
+  const EQUITY_MARGIN = { LP: 0.15, LAG: 0.08, TP: 0.03, TAG: -0.03 };
+  const IMPLIED_ODDS = { LP: 0.06, LAG: 0.05, TP: 0.02, TAG: 0.02 };
+
   function clampThreshold(n) { return Math.max(1, Math.min(99, n)); }
 
   // Continuous shift of thresholds by effective stack depth (in BB).
@@ -624,6 +628,16 @@
       return E >= (t.bet + shift) ? 'bet' : 'check';
     }
     if (E >= (t.raise + shift)) return 'raise';
+    // 3A equity branch: call/fold by equity vs pot odds + per-type margin (when equity supplied).
+    if (context.equity != null && context.pot != null && context.toCall != null) {
+      const required = context.toCall / (context.pot + context.toCall);
+      const extra = Math.max(0, context.extraOpponents || 0);
+      const requiredAdj = Math.min(0.95, required * (1 + 0.10 * extra));
+      const margin = EQUITY_MARGIN[profile.label] != null ? EQUITY_MARGIN[profile.label] : 0;
+      const hasDraw = context.draws && (context.draws.flushDraw || context.draws.openEnded || context.draws.gutshot);
+      const implied = hasDraw ? (IMPLIED_ODDS[profile.label] || 0) : 0;
+      return (context.equity + implied >= requiredAdj - margin) ? 'call' : 'fold';
+    }
     if (E >= t.call) return 'call';
     return 'fold';
   }
@@ -1275,11 +1289,12 @@
 // UMD: Node requires engine + players + ranges; browser uses window.Engine / window.Players / window.Ranges.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./engine.js'), require('./players.js'), require('./ranges.js'));
+    module.exports = factory(require('./engine.js'), require('./players.js'), require('./ranges.js'),
+      require('./postflop.js'), require('./equity.js'));
   } else {
-    root.Betting = factory(root.Engine, root.Players, root.Ranges);
+    root.Betting = factory(root.Engine, root.Players, root.Ranges, root.Postflop, root.Equity);
   }
-})(typeof self !== 'undefined' ? self : this, function (Engine, Players, Ranges) {
+})(typeof self !== 'undefined' ? self : this, function (Engine, Players, Ranges, Postflop, Equity) {
   const { ACTION_ORDER } = Engine;
   const { PROFILES, decideActionByType } = Players;
 
@@ -1321,6 +1336,7 @@
     let pot = config.startingPot || 0;
     let currentBet = 0;
     let raisesSoFar = 0;
+    let lastAggressorSeat = null; // 3A: seat that most recently raised/bet (the bettor)
     let acted = new Set();
     let ptr = 0;
     let complete = false;
@@ -1395,6 +1411,7 @@
         if (p.stack === 0) p.allIn = true;
 
         if (newCommitted > currentBet) {
+          lastAggressorSeat = seat; // 3A: this seat is now the bettor/raiser
           // Determine whether this is a full min-raise (reopens action) or a short all-in.
           const raiseAmount = newCommitted - currentBet;
           const fullRaise = raiseAmount >= lastRaiseSize();
@@ -1468,6 +1485,27 @@
           // Range-driven: look up this seat's actual hand in its type/position/action range.
           action = Ranges.actionForHand(cardsOf(seat), p.type, p.position, { raisesBefore: raisesSoFar });
         } else {
+          // 3A: postflop facing a bet -> equity vs the bettor's range + pot odds (when cards known).
+          if (mode === 'postflop' && ctx.facingBet && cardsOf && Ranges && Equity && Postflop) {
+            const decider = cardsOf(seat);
+            let aggressor = (lastAggressorSeat != null && lastAggressorSeat !== seat) ? bySeat[lastAggressorSeat] : null;
+            if (!aggressor) { // fallback: the highest-committed other live player
+              for (const q of activePlayers()) {
+                if (q.seat === seat) continue;
+                if (!aggressor || q.committed > aggressor.committed) aggressor = q;
+              }
+            }
+            const aggType = (aggressor && aggressor.type) ? aggressor.type : 'TAG'; // hero/unknown -> TAG value proxy
+            const aggPos = aggressor ? aggressor.position : p.position;
+            const rng = Ranges.rangeFor(aggType, aggPos, { raisesBefore: 0 });
+            let keys = Object.keys(rng.keyToAction).filter(k => rng.keyToAction[k] === 'raise');
+            if (!keys.length) keys = Object.keys(rng.keyToAction).filter(k => rng.keyToAction[k] !== 'fold');
+            ctx.equity = Equity.equityVsRange(decider, board, keys, {});
+            ctx.pot = pot;
+            ctx.toCall = currentBet - p.committed;
+            ctx.extraOpponents = Math.max(0, activePlayers().length - 2);
+            ctx.draws = Postflop.postflopScore(decider, board).draws;
+          }
           action = decide(strengthOf(seat, board), PROFILES[p.type], ctx);
         }
         // If player is in call-or-fold-only mode, downgrade 'raise' to 'call'.
@@ -1838,6 +1876,7 @@
           .filter(seat => liveSet.has(seat));
         cfg.decide = Players.decidePostflop;
         cfg.texture = Postflop.boardTexture(board);
+        cfg.cardsOf = (seat) => hands[seat]; // 3A: equity-aware postflop calls
       }
       return Betting.createBettingRound(cfg);
     }
