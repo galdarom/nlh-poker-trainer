@@ -526,6 +526,40 @@
   const EQUITY_MARGIN = { LP: 0.15, LAG: 0.08, TP: 0.03, TAG: -0.03 };
   const IMPLIED_ODDS = { LP: 0.06, LAG: 0.05, TP: 0.02, TAG: 0.02 };
 
+  // 3C: postflop bet/check frequencies. Base = has initiative (preflop aggressor), dry board.
+  const BET_FREQ = {
+    TAG: { monster: 0.70, strong: 0.85, medium: 0.45, draw: 0.60, air: 0.35 },
+    LAG: { monster: 0.65, strong: 0.85, medium: 0.55, draw: 0.75, air: 0.60 },
+    TP:  { monster: 0.55, strong: 0.80, medium: 0.40, draw: 0.35, air: 0.08 },
+    LP:  { monster: 0.45, strong: 0.65, medium: 0.30, draw: 0.30, air: 0.06 },
+  };
+
+  function classifyPostflop(ps) {
+    const s = ps.score100;
+    const strongDraw = ps.draws && (ps.draws.flushDraw || ps.draws.openEnded);
+    if (s >= 84) return 'monster';
+    if (s >= 60) return 'strong';
+    if (strongDraw) return 'draw';
+    if (s >= 36) return 'medium';
+    return 'air';
+  }
+
+  function betFrequency(handClass, typeLabel, texture, hasInitiative) {
+    const row = BET_FREQ[typeLabel] || BET_FREQ.TAG;
+    const f = { monster: row.monster, strong: row.strong, medium: row.medium, draw: row.draw, air: row.air };
+    const wet = texture && (texture.connected || texture.twoTone || texture.monotone);
+    if (wet) {
+      f.air *= 0.6;
+      f.draw = Math.min(f.draw + 0.05, 0.95);
+      f.strong = Math.min(f.strong + 0.05, 0.95);
+    }
+    if (!hasInitiative) {
+      f.air *= 0.30; f.draw *= 0.60; f.medium *= 0.60; f.strong *= 0.85;
+    }
+    const v = f[handClass] != null ? f[handClass] : 0;
+    return Math.max(0, Math.min(0.97, v));
+  }
+
   function clampThreshold(n) { return Math.max(1, Math.min(99, n)); }
 
   // Continuous shift of thresholds by effective stack depth (in BB).
@@ -625,6 +659,10 @@
     const shift = textureShift(profile, context.texture);
     if (context.raisesSoFar >= 3) return E >= 10 ? 'call' : 'fold'; // cap
     if (!context.facingBet) {
+      if (context.betRoll != null && context.handClass != null) {
+        const freq = betFrequency(context.handClass, profile.label, context.texture, !!context.hasInitiative);
+        return context.betRoll < freq ? 'bet' : 'check';
+      }
       return E >= (t.bet + shift) ? 'bet' : 'check';
     }
     if (E >= (t.raise + shift)) return 'raise';
@@ -647,7 +685,8 @@
     return TYPES[Math.floor(rng() * TYPES.length)];
   }
 
-  return { PROFILES, TYPES, decideActionByType, perceivedRead, randomType, decidePostflop, depthScale };
+  return { PROFILES, TYPES, decideActionByType, perceivedRead, randomType, decidePostflop, depthScale,
+    classifyPostflop, betFrequency };
 });
 
 </script>
@@ -1506,6 +1545,16 @@
             ctx.extraOpponents = Math.max(0, activePlayers().length - 2);
             ctx.draws = Postflop.postflopScore(decider, board).draws;
           }
+          // 3C: postflop NOT facing a bet -> frequency-based c-bet/semi-bluff/bluff/trap.
+          else if (mode === 'postflop' && !ctx.facingBet && cardsOf && Ranges && Postflop) {
+            const decider = cardsOf(seat);
+            const ps = Postflop.postflopScore(decider, board);
+            ctx.handClass = Players.classifyPostflop(ps);
+            const seed = decider.map(c => c.rank + c.suit).join('') + '|' + p.type + '|'
+              + board.length + '|' + board.map(c => c.rank + c.suit).join('') + '|cbet';
+            ctx.betRoll = Ranges.hash(seed);
+            ctx.hasInitiative = (config.preflopAggressor != null && seat === config.preflopAggressor);
+          }
           action = decide(strengthOf(seat, board), PROFILES[p.type], ctx);
         }
         // If player is in call-or-fold-only mode, downgrade 'raise' to 'call'.
@@ -1562,7 +1611,7 @@
     // (g) state includes stack and allIn for each player.
     function state() {
       return {
-        pot, currentBet, raisesSoFar, complete, mode, heroSeat,
+        pot, currentBet, raisesSoFar, complete, mode, heroSeat, lastAggressorSeat,
         toAct: awaitingHeroFlag ? heroSeat : null,
         players: playerList.map(p => ({ ...p })),
         log: log.map(e => ({ ...e })),
@@ -1836,6 +1885,7 @@
     }
     let liveSeats = seats.map(s => s.seat); // updated after each round
     let round = null;
+    let preflopAggressor = null; // 3C: the preflop raiser (initiative), null if limped
 
     // (a) remainingStack: what a seat has left to bet this hand (starting stack minus already committed).
     function remainingStack(seat) {
@@ -1877,6 +1927,7 @@
         cfg.decide = Players.decidePostflop;
         cfg.texture = Postflop.boardTexture(board);
         cfg.cardsOf = (seat) => hands[seat]; // 3A: equity-aware postflop calls
+        cfg.preflopAggressor = preflopAggressor; // 3C: who had initiative (c-bet logic)
       }
       return Betting.createBettingRound(cfg);
     }
@@ -1958,6 +2009,7 @@
         if (round.awaitingHero()) return;
         if (!round.state().complete) return; // shouldn't happen (auto-advanced), safety
         absorbRound();
+        if (streetIndex === 0) preflopAggressor = round.state().lastAggressorSeat; // 3C: capture preflop raiser
         // (c) Apply uncalled-bet refund after each round closes.
         applyUncalledRefund();
         if (liveSeats.length <= 1) { foldWin(); return; }
