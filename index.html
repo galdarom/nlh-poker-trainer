@@ -82,15 +82,21 @@
   #setupRow .sep { color:#5a6; margin:0 6px; }
   .typebtn { padding:4px 9px; margin:0 2px; font-size:12px; border-radius:6px; border:1px solid #3a5; background:#1d2b22; color:#cfe6d6; cursor:pointer; }
   .typebtn.active { background:#3a8f5a; color:#fff; border-color:#5fd089; }
-  /* Phone: shrink the range matrix overlay + cards/controls so nothing overflows. */
+  /* Phone: shrink the range matrix overlay + buttons/chrome so it's compact, not oversized. */
   @media (max-width: 560px) {
+    h1 { font-size:15px; margin:6px 8px; }
+    .session { font-size:12px; }
     .matrixbox { max-width:96vw; padding:10px 8px; }
     .grid13 { grid-template-columns:repeat(13, 1fr); grid-auto-rows:6.6vw; width:100%; }
     .gcell { font-size:2.4vw; }
     .matrixbox h3 { font-size:12px; }
     .matrixbox .legend, .matrixbox .legend2 { font-size:10px; }
-    button { padding:8px 11px; font-size:13px; }
-    .setuplabel { display:block; width:100%; margin:0 0 4px; }
+    .controls { margin:5px 0; min-height:0; }
+    button { padding:6px 9px; font-size:11.5px; margin:2px; border-radius:6px; }
+    .typebtn { padding:3px 7px; font-size:11px; margin:1px; }
+    .feedback { font-size:12px; }
+    .heroInfo { font-size:12px; }
+    .setuplabel { display:block; width:100%; margin:0 0 3px; font-size:12px; }
   }
 </style>
 </head>
