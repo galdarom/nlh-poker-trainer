@@ -7,11 +7,14 @@
 <style>
   :root { --felt:#0b6b3a; --felt-dark:#084d2a; --gold:#e8c66b; }
   * { box-sizing: border-box; }
+  html, body { overflow-x:hidden; max-width:100%; }
   body { margin:0; font-family: system-ui, Arial, sans-serif; background:#13241b; color:#f4f4f4; }
   h1 { text-align:center; font-weight:600; margin:10px 0; font-size:19px; }
   .session { text-align:center; font-size:14px; margin:2px 0 8px; }
   .session .net.pos { color:#9be59b; } .session .net.neg { color:#f39b9b; }
-  .table { position:relative; width:720px; height:420px; margin:12px auto;
+  /* tablewrap scales the fixed-size felt down to fit narrow (phone) screens; JS sets the scale. */
+  .tablewrap { width:100%; overflow:hidden; margin:12px 0; }
+  .table { position:relative; width:720px; height:420px; transform-origin:top left;
     background:radial-gradient(ellipse at center, var(--felt), var(--felt-dark));
     border:10px solid #5a3a1a; border-radius:210px; box-shadow:0 0 40px rgba(0,0,0,.5) inset; }
   .center { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); text-align:center; }
@@ -79,12 +82,22 @@
   #setupRow .sep { color:#5a6; margin:0 6px; }
   .typebtn { padding:4px 9px; margin:0 2px; font-size:12px; border-radius:6px; border:1px solid #3a5; background:#1d2b22; color:#cfe6d6; cursor:pointer; }
   .typebtn.active { background:#3a8f5a; color:#fff; border-color:#5fd089; }
+  /* Phone: shrink the range matrix overlay + cards/controls so nothing overflows. */
+  @media (max-width: 560px) {
+    .matrixbox { max-width:96vw; padding:10px 8px; }
+    .grid13 { grid-template-columns:repeat(13, 1fr); grid-auto-rows:6.6vw; width:100%; }
+    .gcell { font-size:2.4vw; }
+    .matrixbox h3 { font-size:12px; }
+    .matrixbox .legend, .matrixbox .legend2 { font-size:10px; }
+    button { padding:8px 11px; font-size:13px; }
+    .setuplabel { display:block; width:100%; margin:0 0 4px; }
+  }
 </style>
 </head>
 <body>
   <h1>NLH Trainer — Stacks · All-ins · Side Pots</h1>
   <div class="session" id="session"></div>
-  <div class="table" id="table"></div>
+  <div class="tablewrap" id="tablewrap"><div class="table" id="table"></div></div>
   <div id="controls" class="controls"></div>
   <div id="feedback" class="feedback"></div>
   <div id="result" class="result"></div>
@@ -1967,7 +1980,24 @@
       renderResult();
       renderHeroInfo();
       renderHeroTypeSelector();
+      fitTable();
     }
+
+    // Scale the fixed 720x420 felt down to fit the viewport width (phones); never scale up past 1.
+    function fitTable() {
+      const wrap = document.getElementById('tablewrap');
+      const t = document.getElementById('table');
+      if (!wrap || !t) return;
+      const TW = 740, TH = 440; // table size including its 10px border
+      // Base on the true visual viewport (window.innerWidth); clientWidth can inflate with overflow.
+      const vw = window.innerWidth || document.documentElement.clientWidth || TW;
+      const avail = Math.min(wrap.clientWidth || vw, vw) - 6;
+      const scale = Math.min(1, avail / TW);
+      t.style.transform = 'scale(' + scale + ')';
+      t.style.marginLeft = Math.max(0, (avail - TW * scale) / 2) + 'px';
+      wrap.style.height = (TH * scale) + 'px';
+    }
+    window.addEventListener('resize', fitTable);
 
     function renderHeroTypeSelector() {
       const host = document.getElementById('heroTypeSel');
