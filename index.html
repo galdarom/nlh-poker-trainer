@@ -65,9 +65,16 @@
   .matrixbox { background:#16241c; border:1px solid #2f5740; border-radius:10px; padding:14px 16px;
     box-shadow:0 8px 30px rgba(0,0,0,.6); }
   .matrixbox h3 { margin:0 0 4px; font-size:14px; color:#fff; }
-  .matrixbox .summary { font-size:14px; color:#e8f3ec; line-height:1.9; min-width:220px; }
-  .matrixbox .summary .net.pos { color:#9be59b; } .matrixbox .summary .net.neg { color:#f39b9b; }
-  .matrixbox .summary .sumtip { color:#9fc6e0; margin-top:6px; }
+  /* persistent coaching + session rectangle at the page bottom */
+  .summarybox { max-width:640px; margin:14px auto 6px; padding:12px 16px; text-align:left;
+    background:#16241c; border:1px solid #3a6b4c; border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,.4); }
+  .summarybox .sb-title { font-size:11px; letter-spacing:1px; text-transform:uppercase; color:#7fae90; margin-bottom:6px; }
+  .summarybox .sb-decision { font-size:15px; line-height:1.45; color:#e8f3ec; }
+  .summarybox .sb-decision.good { color:#9be59b; } .summarybox .sb-decision.loose { color:#f3c969; } .summarybox .sb-decision.tight { color:#f39b9b; }
+  .summarybox .sb-rule { font-size:13px; color:#9fc6e0; margin-top:5px; }
+  .summarybox .sb-stats { font-size:13px; color:#cfe6d6; margin-top:9px; padding-top:9px; border-top:1px solid #29402f; }
+  .summarybox .sb-stats .net.pos { color:#9be59b; } .summarybox .sb-stats .net.neg { color:#f39b9b; }
+  .summarybox .sb-tip { font-size:13px; color:#ffd9a0; margin-top:5px; }
   .matrixbox .revealcards { display:flex; gap:5px; align-items:center; margin:4px 0 8px; font-size:12px; color:#ffd6ec; }
   .matrixbox .revealcards .card { width:30px; height:43px; }
   .matrixbox .legend { font-size:11px; color:#cfe6d6; margin:2px 0 10px; }
@@ -113,7 +120,9 @@
     button { padding:6px 9px; font-size:11.5px; margin:2px; border-radius:6px; }
     .typebtn { padding:3px 7px; font-size:11px; margin:1px; }
     .feedback { font-size:12px; }
-    .feedback .fbmeta { font-size:11px; }
+    .summarybox { max-width:94vw; padding:10px 12px; }
+    .summarybox .sb-decision { font-size:13px; }
+    .summarybox .sb-rule, .summarybox .sb-stats, .summarybox .sb-tip { font-size:12px; }
     .heroInfo { font-size:12px; }
     .setuplabel { display:block; width:100%; margin:0 0 3px; font-size:12px; }
   }
@@ -134,9 +143,9 @@
     <button id="myRangeBtn" class="secondary">My range</button>
     <button id="dealBtn" class="secondary">Deal new hand</button>
     <button id="newGameBtn" class="secondary">New Game</button>
-    <button id="sessionBtn" class="secondary">Session</button>
   </div>
-  <div class="version">V1.03</div>
+  <div id="summaryBox" class="summarybox"></div>
+  <div class="version">V1.04</div>
 
   <script>
 // UMD-style module: works in Node (module.exports) and browser (window.Engine).
@@ -2250,7 +2259,7 @@
     let heroType = 'TAG';
     let decisionStats = { total: 0, optimal: 0, A: 0, B: 0, C: 0, F: 0, loose: 0, tight: 0 };
     function resetStats() { decisionStats = { total: 0, optimal: 0, A: 0, B: 0, C: 0, F: 0, loose: 0, tight: 0 }; }
-    let summaryShown = false;
+    let lastDecision = null;
     let hand = null, hero = null, revealed = new Set(), settled = false, rebuysToShow = [];
 
     function posOf(seat) { return E.seatsWithPositions(NUM_SEATS, buttonSeat).find(s => s.seat === seat).position; }
@@ -2268,7 +2277,7 @@
       hero = hand._debug.hands()[HERO_SEAT];
       revealed = new Set(); settled = false;
       setFeedback('', ''); document.getElementById('result').textContent = '';
-      summaryShown = false; closeOverlay();
+      closeOverlay();
       render();
     }
 
@@ -2277,7 +2286,7 @@
       session = ST.createSession({ numSeats: NUM_SEATS, heroSeat: HERO_SEAT, bigBlind: BB, minBB: 100, maxBB: 100 });
       session.assignAll();
       assignSeatTypes();
-      resetStats();
+      resetStats(); lastDecision = null;
       buttonSeat = Math.floor(Math.random() * NUM_SEATS); // deal() advances it
       deal();
     }
@@ -2410,7 +2419,7 @@
       renderHeroInfo();
       renderHeroTypeSelector();
       fitTable();
-      if (hand.result() && !summaryShown && decisionStats.total > 0) { summaryShown = true; showSessionSummary(); }
+      renderSummary();
     }
 
     // Scale the fixed 720x420 felt down to fit the viewport width (phones); never scale up past 1.
@@ -2582,6 +2591,7 @@
       if (decisionStats[fb.grade] != null) decisionStats[fb.grade] += 1;
       if (fb.verdict === 'loose') decisionStats.loose += 1;
       else if (fb.verdict === 'tight') decisionStats.tight += 1;
+      lastDecision = fb;
       hand.act(action, opts);
       setFeedback(fb.short, fb.verdict);
       render();
@@ -2628,34 +2638,30 @@
       if (d.tight - d.loose >= 2) return "You're over-folding — continue wider when you have the odds.";
       return 'Nicely balanced — keep it up.';
     }
-    // Read-only session scorecard popup (auto at hand end; also via the Session button).
-    function showSessionSummary() {
-      closeOverlay();
-      const overlay = document.createElement('div');
-      overlay.id = 'rangeOverlay'; overlay.className = 'overlay';
-      overlay.addEventListener('click', (e) => { if (e.target === overlay) closeOverlay(); });
-      const box = document.createElement('div'); box.className = 'matrixbox';
-      const net = session.heroNet();
+    // Persistent coaching + session panel at the page bottom (a prominent rectangle, always visible).
+    function renderSummary() {
+      const box = document.getElementById('summaryBox');
+      if (!box) return;
       const d = decisionStats;
+      const net = session.heroNet();
       const acc = d.total ? Math.round(100 * d.optimal / d.total) : 0;
-      const stackBB = bb(session.stacks()[HERO_SEAT]);
-      box.innerHTML = '<h3>Session summary</h3>'
-        + '<div class="summary">'
-        + '<div>Net: <span class="net ' + (net >= 0 ? 'pos' : 'neg') + '">' + (net >= 0 ? '+' : '') + '$' + net + '</span> · stack ' + stackBB + '</div>'
-        + '<div>Decisions: <b>' + d.total + '</b> · Optimal: <b>' + d.optimal + '</b> (' + acc + '%)</div>'
-        + '<div>Grades: A ' + d.A + ' · B ' + d.B + ' · C ' + d.C + ' · F ' + d.F + '</div>'
-        + '<div class="sumtip">💡 ' + escapeHtml(summaryTakeaway(d)) + '</div>'
-        + '</div>';
-      const close = document.createElement('button');
-      close.className = 'closebtn'; close.textContent = 'Close';
-      close.addEventListener('click', closeOverlay);
-      box.appendChild(close);
-      overlay.appendChild(box); document.body.appendChild(overlay);
+      const stats = 'Net <span class="net ' + (net >= 0 ? 'pos' : 'neg') + '">' + (net >= 0 ? '+' : '') + '$' + net + '</span>'
+        + ' · Decisions ' + d.total + ' · Optimal ' + d.optimal + ' (' + acc + '%)'
+        + ' · Grades A ' + d.A + ' · B ' + d.B + ' · C ' + d.C + ' · F ' + d.F;
+      let html = '<div class="sb-title">Coaching &amp; session</div>';
+      if (lastDecision) {
+        html += '<div class="sb-decision ' + (lastDecision.verdict || '') + '">' + escapeHtml(lastDecision.text) + '</div>'
+          + '<div class="sb-rule">💡 ' + escapeHtml(lastDecision.rule) + '</div>';
+      } else {
+        html += '<div class="sb-decision">Make a decision — your full coaching and session stats appear here.</div>';
+      }
+      html += '<div class="sb-stats">' + stats + '</div>';
+      if (d.total > 0) html += '<div class="sb-tip">💡 ' + escapeHtml(summaryTakeaway(d)) + '</div>';
+      box.innerHTML = html;
     }
 
     document.getElementById('dealBtn').addEventListener('click', deal);
     document.getElementById('newGameBtn').addEventListener('click', newGame);
-    document.getElementById('sessionBtn').addEventListener('click', showSessionSummary);
     document.getElementById('myRangeBtn').addEventListener('click', function () {
       const st = hand.state();
       const heroPos = posOf(HERO_SEAT);
