@@ -130,7 +130,7 @@
     <button id="dealBtn" class="secondary">Deal new hand</button>
     <button id="newGameBtn" class="secondary">New Game</button>
   </div>
-  <div class="version">V1.00</div>
+  <div class="version">V1.01</div>
 
   <script>
 // UMD-style module: works in Node (module.exports) and browser (window.Engine).
@@ -565,7 +565,16 @@
     return 'air';
   }
 
-  function betFrequency(handClass, typeLabel, texture, hasInitiative) {
+  // 3C per-street taper: bluffs (air/draw) fall on later streets; value (strong/monster) holds.
+  const STREET_MULT = {
+    air:    { 3: 1.0, 4: 0.65, 5: 0.35 },
+    draw:   { 3: 1.0, 4: 0.75, 5: 0.75 },
+    medium: { 3: 1.0, 4: 0.85, 5: 0.70 },
+    strong: { 3: 1.0, 4: 1.0,  5: 1.0 },
+    monster:{ 3: 1.0, 4: 1.0,  5: 1.0 },
+  };
+
+  function betFrequency(handClass, typeLabel, texture, hasInitiative, street) {
     const row = BET_FREQ[typeLabel] || BET_FREQ.TAG;
     const f = { monster: row.monster, strong: row.strong, medium: row.medium, draw: row.draw, air: row.air };
     const wet = texture && (texture.connected || texture.twoTone || texture.monotone);
@@ -577,7 +586,9 @@
     if (!hasInitiative) {
       f.air *= 0.30; f.draw *= 0.60; f.medium *= 0.60; f.strong *= 0.85;
     }
-    const v = f[handClass] != null ? f[handClass] : 0;
+    const sm = STREET_MULT[handClass] && STREET_MULT[handClass][street];
+    const v0 = f[handClass] != null ? f[handClass] : 0;
+    const v = v0 * (sm != null ? sm : 1.0); // undefined street -> treat as flop (x1.0)
     return Math.max(0, Math.min(0.97, v));
   }
 
@@ -694,7 +705,7 @@
     if (context.raisesSoFar >= 3) return E >= 10 ? 'call' : 'fold'; // cap
     if (!context.facingBet) {
       if (context.betRoll != null && context.handClass != null) {
-        const freq = betFrequency(context.handClass, profile.label, context.texture, !!context.hasInitiative);
+        const freq = betFrequency(context.handClass, profile.label, context.texture, !!context.hasInitiative, context.street);
         return context.betRoll < freq ? 'bet' : 'check';
       }
       return E >= (t.bet + shift) ? 'bet' : 'check';
@@ -1126,11 +1137,11 @@
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
     module.exports = factory(require('./engine.js'), require('./evaluator.js'),
-      require('./postflop.js'), require('./ranges.js'));
+      require('./postflop.js'), require('./ranges.js'), require('./players.js'));
   } else {
-    root.Equity = factory(root.Engine, root.Evaluator, root.Postflop, root.Ranges);
+    root.Equity = factory(root.Engine, root.Evaluator, root.Postflop, root.Ranges, root.Players);
   }
-})(typeof self !== 'undefined' ? self : this, function (Engine, Evaluator, Postflop, Ranges) {
+})(typeof self !== 'undefined' ? self : this, function (Engine, Evaluator, Postflop, Ranges, Players) {
   const SUITS4 = ['c', 'd', 'h', 's'];
 
   // Rank (1..169) for a canonical key, from the range grid (lower = stronger).
@@ -1160,36 +1171,37 @@
   // Pairwise preflop equity heuristic: even a rank-dominated hand stays "live" (~33%+), so we
   // model each matchup as a smooth function of the rank gap rather than a binary beat. equity vs
   // the range is the average of those pairwise matchups. Deterministic; no card enumeration.
-  function equityPreflop(heroCards, rangeKeys) {
-    if (!rangeKeys.length) return 0.5;
+  function equityPreflop(heroCards, items) {
+    if (!items.length) return 0.5;
     const heroRank = RANK_BY_KEY[Engine.canonicalKey(heroCards[0], heroCards[1])];
-    let sum = 0;
-    for (const k of rangeKeys) {
-      const gap = (RANK_BY_KEY[k] - heroRank) / 168; // >0 when hero is stronger (lower rank)
-      sum += clamp(0.5 + 1.1 * gap, 0.12, 0.92);
+    let sum = 0, wsum = 0;
+    for (const it of items) {
+      const gap = (RANK_BY_KEY[it.key] - heroRank) / 168; // >0 when hero is stronger (lower rank)
+      sum += it.weight * clamp(0.5 + 1.1 * gap, 0.12, 0.92);
+      wsum += it.weight;
     }
-    return clamp(sum / rangeKeys.length, 0.05, 0.95);
+    return clamp(wsum ? sum / wsum : 0.5, 0.05, 0.95);
   }
 
   function cardKey(c) { return c.rank + c.suit; }
 
-  function equityPostflop(heroCards, board, rangeKeys) {
+  function equityPostflop(heroCards, board, items) {
     const used = new Set(heroCards.concat(board).map(cardKey));
     const heroPS = Postflop.postflopScore(heroCards, board);
     const heroScore = heroPS.score100;
 
     let beat = 0, n = 0;
-    for (const k of rangeKeys) {
+    for (const it of items) {
       // first combo for this key that doesn't collide with hero/board
       let combo = null;
-      for (const cand of combosForKey(k)) {
+      for (const cand of combosForKey(it.key)) {
         if (!cand.some(c => used.has(cardKey(c)))) { combo = cand; break; }
       }
       if (!combo) continue; // fully blocked -> skip
       const vs = Postflop.postflopScore(combo, board).score100;
-      if (vs < heroScore) beat += 1;
-      else if (vs === heroScore) beat += 0.5;
-      n += 1;
+      const inc = vs < heroScore ? 1 : vs === heroScore ? 0.5 : 0;
+      beat += it.weight * inc;
+      n += it.weight;
     }
     const showdownFrac = n === 0 ? 0.5 : beat / n;
 
@@ -1206,12 +1218,35 @@
     return clamp(equity, 0.02, 0.98);
   }
 
-  function equityVsRange(heroCards, board, rangeKeys, opts) {
-    if (!board || board.length === 0) return equityPreflop(heroCards, rangeKeys);
-    return equityPostflop(heroCards, board, rangeKeys);
+  function normItems(range) {
+    return (range || []).map(r => (typeof r === 'string' ? { key: r, weight: 1 } : r))
+                        .filter(r => r && r.weight > 0);
   }
 
-  return { equityVsRange, combosForKey, equityPreflop };
+  function equityVsRange(heroCards, board, range, opts) {
+    const items = normItems(range);
+    if (!board || board.length === 0) return equityPreflop(heroCards, items);
+    return equityPostflop(heroCards, board, items);
+  }
+
+  // Narrow a bettor's preflop range to the polarized hands they'd BET on this board (reuses 3C).
+  function bettingRange(preflopKeys, board, typeLabel) {
+    if (!board || board.length === 0) return preflopKeys.map(k => ({ key: k, weight: 1 }));
+    const texture = Postflop.boardTexture(board);
+    const used = new Set(board.map(c => c.rank + c.suit));
+    const out = [];
+    for (const k of preflopKeys) {
+      let combo = null;
+      for (const cand of combosForKey(k)) { if (!cand.some(c => used.has(c.rank + c.suit))) { combo = cand; break; } }
+      if (!combo) continue;
+      const cls = Players.classifyPostflop(Postflop.postflopScore(combo, board));
+      const w = Players.betFrequency(cls, typeLabel, texture, true, board.length); // bettor took the aggressive line
+      if (w > 0.02) out.push({ key: k, weight: w });
+    }
+    return out.length ? out : preflopKeys.map(k => ({ key: k, weight: 1 }));
+  }
+
+  return { equityVsRange, combosForKey, equityPreflop, bettingRange };
 });
 
 </script>
@@ -1573,7 +1608,7 @@
             const rng = Ranges.rangeFor(aggType, aggPos, { raisesBefore: 0 });
             let keys = Object.keys(rng.keyToAction).filter(k => rng.keyToAction[k] === 'raise');
             if (!keys.length) keys = Object.keys(rng.keyToAction).filter(k => rng.keyToAction[k] !== 'fold');
-            ctx.equity = Equity.equityVsRange(decider, board, keys, {});
+            ctx.equity = Equity.equityVsRange(decider, board, Equity.bettingRange(keys, board, aggType), {});
             ctx.pot = pot;
             ctx.toCall = currentBet - p.committed;
             ctx.extraOpponents = Math.max(0, activePlayers().length - 2);
@@ -1588,6 +1623,7 @@
               + board.length + '|' + board.map(c => c.rank + c.suit).join('') + '|cbet';
             ctx.betRoll = Ranges.hash(seed);
             ctx.hasInitiative = (config.preflopAggressor != null && seat === config.preflopAggressor);
+            ctx.street = board.length;
           }
           action = decide(strengthOf(seat, board), PROFILES[p.type], ctx);
         }
@@ -1836,7 +1872,8 @@
       const r = Ranges.rangeFor(aggressor.type, aggressor.position, { raisesBefore: aggRaisesBefore });
       let keys = Object.keys(r.keyToAction).filter(k => r.keyToAction[k] === 'raise');
       if (!keys.length) keys = Object.keys(r.keyToAction).filter(k => r.keyToAction[k] !== 'fold');
-      const equity = Equity.equityVsRange(heroCards, board, keys, {});
+      const range = board.length ? Equity.bettingRange(keys, board, aggressor.type) : keys;
+      const equity = Equity.equityVsRange(heroCards, board, range, {});
       const required = toCall / ((ts.pot || 0) + toCall);
       const extra = Math.max(0, activeOpps - 1);
       const requiredAdj = Math.min(0.95, required * (1 + 0.10 * extra));
