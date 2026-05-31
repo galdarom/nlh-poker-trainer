@@ -145,7 +145,7 @@
     <button id="newGameBtn" class="secondary">New Game</button>
   </div>
   <div id="summaryBox" class="summarybox"></div>
-  <div class="version">V1.04</div>
+  <div class="version">V1.05</div>
 
   <script>
 // UMD-style module: works in Node (module.exports) and browser (window.Engine).
@@ -1841,13 +1841,13 @@
   const ACT_TIER = { fold: 0, check: 1, call: 2, bet: 3, raise: 4 };
   function pctOf(x) { return Math.round(x * 100); }
 
-  // Primary aggressor: last raiser/bettor among active non-hero players (else top contributor).
+  // Primary aggressor: the player who actually raised/bet/all-in. A posted blind is NOT an
+  // aggressor (an unraised pot is an opening spot, not "facing a bet") -> return null.
   function findAggressor(ts) {
-    const opps = ts.players.filter(p => p.seat !== ts.heroSeat && p.status === 'active');
-    const aggressive = opps.filter(p => ['raise', 'bet', 'all-in'].includes(p.lastAction));
-    const pool = aggressive.length ? aggressive : opps.filter(p => p.committed > 0);
-    if (!pool.length) return null;
-    return pool.reduce((a, b) => (b.committed > a.committed ? b : a));
+    const aggressive = ts.players.filter(p =>
+      p.seat !== ts.heroSeat && p.status === 'active' && ['raise', 'bet', 'all-in'].includes(p.lastAction));
+    if (!aggressive.length) return null;
+    return aggressive.reduce((a, b) => (b.committed > a.committed ? b : a));
   }
 
   function verdictFor(heroAction, rec) {
@@ -1872,7 +1872,7 @@
   }
 
   const WHY_FACING = {
-    raise: 'ahead of their range — raise for value and to deny equity',
+    raise: "you're ahead of their range — value and protection",
     call:  'you have the equity for the price',
     fold:  'behind their range without the price',
   };
@@ -1947,17 +1947,12 @@
     }
 
     const verdict = verdictFor(heroAction, rec);
-    let text = `${verdictLabel(verdict, heroAction)} — ${core}. ${why.charAt(0).toUpperCase()}${why.slice(1)}.`;
-    // Cost-of-mistake clause when the action wasn't the best line.
-    if (verdict !== 'good') {
-      if (equityPct != null) {
-        text += verdict === 'tight'
-          ? ` You passed up a +EV continue (~${equityPct}% vs ~${neededPct}% needed).`
-          : ` You put chips in behind (~${equityPct}% vs ~${neededPct}% needed).`;
-      } else {
-        text += ` A solid line is to ${rec}.`;
-      }
-    }
+    const whyCap = why.charAt(0).toUpperCase() + why.slice(1);
+    // Good: describe why your (correct) action is right. Wrong: name the best line + its reason —
+    // never blend the recommendation's rationale into a "too loose/tight" verdict (that contradicts).
+    let text = verdict === 'good'
+      ? `${verdictLabel(verdict, heroAction)} — ${core}. ${whyCap}.`
+      : `${verdictLabel(verdict, heroAction)} — ${core}. Best line: ${rec} — ${why}.`;
 
     // Grade from the action-vs-recommendation ladder gap.
     const ladder = board.length ? PF_TIER : TIER;
