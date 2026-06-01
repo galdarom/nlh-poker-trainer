@@ -72,6 +72,7 @@
   .summarybox .sb-decision { font-size:15px; line-height:1.45; color:#e8f3ec; }
   .summarybox .sb-decision.good { color:#9be59b; } .summarybox .sb-decision.loose { color:#f3c969; } .summarybox .sb-decision.tight { color:#f39b9b; }
   .summarybox .sb-analysis { font-size:13px; color:#bcd2c4; margin-top:5px; }
+  .summarybox .sb-ev { font-size:13px; color:#a9c6d8; margin-top:5px; }
   .summarybox .sb-rule { font-size:13px; color:#9fc6e0; margin-top:5px; }
   .summarybox .sb-stats { font-size:13px; color:#cfe6d6; margin-top:9px; padding-top:9px; border-top:1px solid #29402f; }
   .summarybox .sb-stats .net.pos { color:#9be59b; } .summarybox .sb-stats .net.neg { color:#f39b9b; }
@@ -123,7 +124,7 @@
     .feedback { font-size:12px; }
     .summarybox { max-width:94vw; padding:10px 12px; }
     .summarybox .sb-decision { font-size:13px; }
-    .summarybox .sb-analysis, .summarybox .sb-rule, .summarybox .sb-stats, .summarybox .sb-tip { font-size:12px; }
+    .summarybox .sb-analysis, .summarybox .sb-ev, .summarybox .sb-rule, .summarybox .sb-stats, .summarybox .sb-tip { font-size:12px; }
     .heroInfo { font-size:12px; }
     .setuplabel { display:block; width:100%; margin:0 0 3px; font-size:12px; }
   }
@@ -146,7 +147,7 @@
     <button id="newGameBtn" class="secondary">New Game</button>
   </div>
   <div id="summaryBox" class="summarybox"></div>
-  <div class="version">V1.07</div>
+  <div class="version">V1.08</div>
 
   <script>
 // UMD-style module: works in Node (module.exports) and browser (window.Engine).
@@ -1905,6 +1906,17 @@
     return verdict === 'loose' ? '❌ Too loose' : '❌ Too tight';
   }
 
+  // ---- fold-equity + MDF teaching line (coaching estimates, never GTO) ----
+  // Estimated frequency a villain archetype folds when raised (for the fold branch of a raise).
+  const FOLD_TO_RAISE = { LP: 0.30, LAG: 0.40, TP: 0.55, TAG: 0.50 };
+  // Defender math from the faced bet. pot already INCLUDES the bet; faced bet ~= toCall.
+  // alpha = bettor's bluff auto-profit threshold; MDF = share of range the defender must continue.
+  function defenseMath(pot, toCall) {
+    if (!(pot > 0) || !(toCall > 0)) return null;
+    const alpha = Math.min(0.95, toCall / pot);
+    return { alpha, mdf: Math.max(0, 1 - alpha) };
+  }
+
   // ---- deeper spot-analysis helpers (read-only) ----
   function boardRead(board) {
     const t = Postflop.boardTexture(board);
@@ -2055,6 +2067,21 @@
         : `Spot: ${raw.key} — ~${prePct}%ile of hands. ${tags}`;
     }
 
+    // ---- fold-equity + MDF explainer (facing a bet only; coaching estimates) ----
+    let ev = null;
+    if (aggressor) {
+      const parts = [];
+      const raiseInPlay = rec === 'raise' || heroAction === 'raise' || heroAction === 'bet';
+      if (raiseInPlay && equityPct != null) {
+        const f = FOLD_TO_RAISE[aggressor.type] != null ? FOLD_TO_RAISE[aggressor.type] : 0.45;
+        parts.push(`Raise EV ≈ fold branch (${aggressor.position} ${aggressor.type} folds ~${pctOf(f)}%)`
+          + ` + showdown branch (~${equityPct}% when called)`);
+      }
+      const dm = defenseMath(ts.pot || 0, toCall);
+      if (dm) parts.push(`MDF ~${pctOf(dm.mdf)}% — defend that share of your range; folding the bottom is fine`);
+      if (parts.length) ev = parts.join('. ') + '.';
+    }
+
     // Concise live line: verdict + grade + the decisive number.
     const gradeTag = ` (${grade})`;
     let short;
@@ -2076,7 +2103,7 @@
         : decideActionByType(preflopE(heroCards, ts), PROFILES[heroType], { raisesSoFar: ts.raisesSoFar || 0 });
       text += fitNote(normalizeForLadder(heroAction, board.length), typeAction, heroType, tier);
     }
-    return { verdict, text, rule, grade, optimal, short, analysis };
+    return { verdict, text, rule, grade, optimal, short, analysis, ev };
   }
 
   return { heroLiveScore, recommendAction, evaluateHeroDecision, recommendPostflop, evaluatePostflopDecision, coachTip,
@@ -2743,6 +2770,8 @@
         html += '<div class="sb-decision ' + (lastDecision.verdict || '') + '">' + escapeHtml(lastDecision.text) + '</div>';
         if (lastDecision.analysis)
           html += '<div class="sb-analysis">' + escapeHtml(lastDecision.analysis) + '</div>';
+        if (lastDecision.ev)
+          html += '<div class="sb-ev">' + escapeHtml(lastDecision.ev) + '</div>';
         html += '<div class="sb-rule">💡 ' + escapeHtml(lastDecision.rule) + '</div>';
       } else {
         html += '<div class="sb-decision">Make a decision — your full coaching and session stats appear here.</div>';
