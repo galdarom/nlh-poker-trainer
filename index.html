@@ -77,6 +77,8 @@
   .summarybox .sb-stats { font-size:13px; color:#cfe6d6; margin-top:9px; padding-top:9px; border-top:1px solid #29402f; }
   .summarybox .sb-stats .net.pos { color:#9be59b; } .summarybox .sb-stats .net.neg { color:#f39b9b; }
   .summarybox .sb-tip { font-size:13px; color:#ffd9a0; margin-top:5px; }
+  .summarybox.rtl { direction:rtl; text-align:right; }
+  .feedback.rtl { direction:rtl; }
   .matrixbox .revealcards { display:flex; gap:5px; align-items:center; margin:4px 0 8px; font-size:12px; color:#ffd6ec; }
   .matrixbox .revealcards .card { width:30px; height:43px; }
   .matrixbox .legend { font-size:11px; color:#cfe6d6; margin:2px 0 10px; }
@@ -146,8 +148,12 @@
     <button id="dealBtn" class="secondary">Deal new hand</button>
     <button id="newGameBtn" class="secondary">New Game</button>
   </div>
+  <div class="controls" id="langRow">
+    <span class="setuplabel">Coaching language:</span>
+    <span id="langSel"></span>
+  </div>
   <div id="summaryBox" class="summarybox"></div>
-  <div class="version">V1.08</div>
+  <div class="version">V1.09</div>
 
   <script>
 // UMD-style module: works in Node (module.exports) and browser (window.Engine).
@@ -1978,13 +1984,132 @@
   }
   function tagStr(tags) { return tags.map(x => '[' + x + ']').join(' '); }
 
+  // ---- Hebrew rendering for the coaching output only (shorthand stays Latin) ----
+  const HE_ACT = { fold: 'פולד', call: 'קול', raise: 'רייז', bet: 'בט', check: "צ'ק" };
+  const HE_WHY_FACING = {
+    raise: 'אתה לפני הטווח שלהם — ערך והגנה',
+    call: 'יש לך את האקוויטי למחיר',
+    fold: 'מאחורי הטווח שלהם בלי המחיר',
+  };
+  const HE_WHY_NOBET = {
+    bet: 'חזק מספיק להימור ערך',
+    check: 'חלש מדי להימור — שמור על קופה קטנה',
+  };
+  const HE_WHY_PREFLOP = {
+    raise: 'חזק מספיק להעלאה לערך / לקיחת יוזמה',
+    call: 'בר-שחיקה אבל לא חזק מספיק להעלאה',
+    fold: 'לא חזק מספיק להמשיך',
+  };
+  const HE_RULE_FACING = {
+    raise: 'העלה ידיים חזקות מול טווח שמהמר — תקבל קול מידיים גרועות יותר.',
+    call: 'עשה קול כשהאקוויטי שלך עולה על המחיר שההימור נותן.',
+    fold: 'אין מחיר + מאחור = פולד; אל תשלם עם יד חלשה.',
+  };
+  const HE_RULE_NOBET = {
+    bet: 'המר עם ידיי הערך כדי לקבל קול מגרוע יותר ולשלול אקוויטי.',
+    check: "עשה צ'ק עם ידיים חלשות כדי לשמור על קופה קטנה.",
+  };
+  const HE_RULE_PREFLOP = {
+    raise: 'העלה עם ידיים מובילות וקח יוזמה עם ידיים חזקות.',
+    call: 'המשך עם ידיים בעלות סיכויים/בר-שחיקה, לא בהעלאה.',
+    fold: 'זרוק ידיים נשלטות, במיוחד מול מעלה הדוק.',
+  };
+  const HE_BOARD = {
+    monotone: 'חד-צבעי', wet: 'רטוב', connected: 'מחובר', 'two-tone': 'דו-צבעי', dry: 'יבש',
+    'A-high': 'A-גבוה', 'K-high': 'K-גבוה', 'Q-high': 'Q-גבוה', low: 'נמוך', middling: 'בינוני', paired: 'מזווג',
+  };
+  const HE_ROLE = {
+    'value (strong)': 'ערך (חזק)', value: 'ערך', 'bluff-catcher': 'תופס בלופים',
+    'draw (semi-bluff)': 'דרואו (סמי-בלוף)', air: 'אוויר',
+  };
+  const HE_REPS = {
+    'value-heavy (top pair+)': 'כבד-ערך (טופ פייר+)', 'polarized (value + draws)': 'מקוטב (ערך + דרואים)',
+    'wide / airy': 'רחב / אוויר', 'a mixed range': 'טווח מעורב', 'their opening range': 'טווח הפתיחה שלהם',
+  };
+  const HE_TAG = {
+    'pot odds': 'יחס קופה', protection: 'הגנה', 'bluff-catch': 'תפיסת בלוף', draw: 'דרואו',
+    blockers: 'בלוקרים', 'value bet': 'הימור ערך', 'pot control': 'שליטה בקופה', '3-bet': '3-בט', open: 'פתיחה',
+  };
+  const HE_MADE = {
+    'straight flush': 'רצף צבע', quads: 'רביעייה', 'full house': 'פול האוס', flush: 'צבע', straight: 'רצף',
+    set: 'סט', 'three of a kind': 'שלישייה', 'two pair': 'שתי זוגות', overpair: 'אוברפייר', underpair: 'אנדרפייר',
+    'top pair': 'טופ פייר', 'bottom pair': 'זוג תחתון', 'second pair': 'זוג שני', 'no pair': 'ללא זוג',
+  };
+  function heAct(a) { return HE_ACT[a] || a; }
+  function heVerdictLabel(v, a) {
+    if (v === 'good') return `✅ ${heAct(a)} טוב`;
+    return v === 'loose' ? '❌ רחב מדי' : '❌ הדוק מדי';
+  }
+  function heBoardRead(en) { return en.split(', ').map(t => HE_BOARD[t] || t).join(', '); }
+  function heTags(keys) { return (keys || []).map(k => '[' + (HE_TAG[k] || k) + ']').join(' '); }
+
+  // Rebuild the five coaching strings in Hebrew from the captured `meta` bag.
+  function renderHE(m) {
+    const gradeTag = ` (${m.grade})`;
+    let core;
+    if (m.spot === 'facing') {
+      const where = m.boardCodes ? `על ${m.boardCodes} ` : '';
+      const multi = m.multiwayExtra > 0 ? ` (×${(1 + 0.10 * m.multiwayExtra).toFixed(1)} מרובה)` : '';
+      core = `${where}יש לך ~${m.equityPct}% מול טווח ההימור של ה-${m.aggressor.position} ${m.aggressor.type}; ההימור נותן ~${m.neededPct}%${multi}`;
+    } else if (m.spot === 'noBet') {
+      core = `אין הימור אליך — ${HE_MADE[m.made] || m.made} (~${m.score10}/10)`;
+    } else {
+      core = `מצב פתיחה (${m.preKey})`;
+    }
+    const why = (m.spot === 'facing' ? HE_WHY_FACING : m.spot === 'noBet' ? HE_WHY_NOBET : HE_WHY_PREFLOP)[m.rec];
+    const rule = (m.spot === 'facing' ? HE_RULE_FACING : m.spot === 'noBet' ? HE_RULE_NOBET : HE_RULE_PREFLOP)[m.rec];
+    const label = heVerdictLabel(m.verdict, m.heroAction);
+    let text = m.verdict === 'good'
+      ? `${label} — ${core}. ${why}.`
+      : `${label} — ${core}. הקו הטוב ביותר: ${heAct(m.rec)} — ${why}.`;
+    if (m.fit) {
+      text += m.fit.relation === 'same'
+        ? ` מתאים לסגנון ה-${m.fit.type} שלך.`
+        : m.fit.relation === 'looser'
+          ? ` רחב יותר מסגנון ה-${m.fit.type} שלך (ה-${m.fit.type} היה עושה ${heAct(m.fit.typeAction)}).`
+          : ` הדוק יותר מסגנון ה-${m.fit.type} שלך (ה-${m.fit.type} היה עושה ${heAct(m.fit.typeAction)}).`;
+    }
+    let analysis;
+    if (!m.hasBoard) {
+      analysis = m.aggressor
+        ? `מצב: ${m.preKey} — ~${m.prePct} אחוזון מהידיים. מול טווח הפתיחה של ה-${m.aggressor.position} ${m.aggressor.type}. ${heTags(m.tagKeys)}`
+        : `מצב: ${m.preKey} — ~${m.prePct} אחוזון מהידיים. ${heTags(m.tagKeys)}`;
+    } else {
+      const head = `מצב: ${heBoardRead(m.boardReadEN)}. היד שלך: ${HE_ROLE[m.role] || m.role}`;
+      analysis = m.aggressor
+        ? `${head} (~${m.pct} אחוזון בטווח שלך). הם מייצגים ${HE_REPS[m.reps] || m.reps}. ${heTags(m.tagKeys)}`
+        : `${head} (~${m.pct} אחוזון). ${heTags(m.tagKeys)}`;
+    }
+    let ev = null;
+    if (m.aggressor) {
+      const parts = [];
+      if (m.evRaiseInPlay && m.equityPct != null)
+        parts.push(`EV של רייז ≈ ענף קיפול (ה-${m.aggressor.position} ${m.aggressor.type} מקפל ~${m.evFoldPct}%) + ענף שואודאון (~${m.equityPct}% כשמשווים)`);
+      if (m.evMdfPct != null) parts.push(`MDF ~${m.evMdfPct}% — הגן על החלק הזה מהטווח; אפשר לקפל את התחתית`);
+      if (parts.length) ev = parts.join('. ') + '.';
+    }
+    let short;
+    if (m.equityPct != null) {
+      short = m.verdict === 'good'
+        ? `${label}${gradeTag} — ${m.equityPct}% מול מחיר ${m.neededPct}%.`
+        : `${label}${gradeTag} — ${m.equityPct}% מול ${m.neededPct}% נדרש; ${heAct(m.rec)}.`;
+    } else {
+      short = m.verdict === 'good' ? `${label}${gradeTag}.` : `${label}${gradeTag} — ${heAct(m.rec)} עדיף.`;
+    }
+    return { text, short, analysis, ev, rule };
+  }
+
   // Range- & opponent-aware tip. heroAction normalized to fold|check|call|bet|raise.
-  function coachTip(heroAction, heroCards, board, ts, heroType) {
+  // lang: 'en' (default) | 'he' — only the rendered strings change; verdict/grade/optimal are neutral.
+  function coachTip(heroAction, heroCards, board, ts, heroType, lang) {
     board = board || [];
     const hero = ts.players.find(p => p.seat === ts.heroSeat) || { committed: 0 };
     const toCall = Math.max(0, (ts.currentBet || 0) - (hero.committed || 0));
     const activeOpps = ts.players.filter(p => p.seat !== ts.heroSeat && p.status === 'active').length;
     const aggressor = toCall > 0 ? findAggressor(ts) : null;
+    // meta: raw values captured during the (unchanged) English pass, for Hebrew rendering.
+    const meta = { heroAction, hasBoard: board.length > 0,
+      aggressor: aggressor ? { position: aggressor.position, type: aggressor.type } : null };
 
     let rec, core, why, rule;
     let equityPct = null, neededPct = null; // for the cost clause (facing-a-bet only)
@@ -2016,16 +2141,20 @@
       const multi = extra > 0 ? ` (×${(1 + 0.10 * extra).toFixed(1)} multiway)` : '';
       core = `${where}you have ~${equityPct}% vs the ${aggressor.position} ${aggressor.type}'s betting range; the bet lays ~${neededPct}%${multi}`;
       why = WHY_FACING[rec]; rule = RULE_FACING[rec];
+      meta.multiwayExtra = extra;
+      meta.boardCodes = board.length ? board.map(c => c.rank + c.suit).join('') : '';
     } else if (board.length) {
       const ps = Postflop.postflopScore(heroCards, board);
       rec = ps.score100 >= 55 ? 'bet' : 'check';
       core = `no bet to you — ${ps.made} (~${(ps.score100 / 10).toFixed(1)}/10)`;
       why = WHY_NOBET[rec]; rule = RULE_NOBET[rec];
+      meta.made = ps.made; meta.score10 = (ps.score100 / 10).toFixed(1);
     } else {
       const raw = Engine.rawScore(heroCards[0], heroCards[1]);
       rec = recommendAction(preflopE(heroCards, ts), ts.raisesSoFar || 0).action;
       core = `opening spot (${raw.key})`;
       why = WHY_PREFLOP[rec]; rule = RULE_PREFLOP[rec];
+      meta.preKey = raw.key;
     }
 
     const verdict = verdictFor(heroAction, rec);
@@ -2050,10 +2179,13 @@
       const ps = Postflop.postflopScore(heroCards, board);
       const role = handRole(ps);
       const pct = rangePercentile(heroCards, board, heroType, heroPos, { raisesBefore: ts.raisesSoFar || 0 });
-      const tags = tagStr(conceptTags({ facingBet: !!aggressor, board, rec, role, draws: ps.draws, heroCards, preflop: false }));
+      const tagKeys = conceptTags({ facingBet: !!aggressor, board, rec, role, draws: ps.draws, heroCards, preflop: false });
+      const tags = tagStr(tagKeys);
+      meta.boardReadEN = boardRead(board); meta.role = role; meta.pct = pct; meta.tagKeys = tagKeys;
       if (aggressor) {
         const used = new Set(board.map(c => c.rank + c.suit));
         const reps = villainReps(villainBettingRange, board, used);
+        meta.reps = reps;
         analysis = `Spot: ${boardRead(board)}. Your hand: ${role} (~${pct}%ile of your range). They rep ${reps}. ${tags}`;
       } else {
         analysis = `Spot: ${boardRead(board)}. Your hand: ${role} (~${pct}%ile). ${tags}`;
@@ -2061,7 +2193,9 @@
     } else {
       const raw = Engine.rawScore(heroCards[0], heroCards[1]);
       const prePct = Math.round(100 * (169 - raw.rank + 1) / 169);
-      const tags = tagStr(conceptTags({ facingBet: !!aggressor, board, rec, role: null, draws: null, heroCards, preflop: true, openingPre: !aggressor }));
+      const tagKeys = conceptTags({ facingBet: !!aggressor, board, rec, role: null, draws: null, heroCards, preflop: true, openingPre: !aggressor });
+      const tags = tagStr(tagKeys);
+      meta.preKey = raw.key; meta.prePct = prePct; meta.tagKeys = tagKeys;
       analysis = aggressor
         ? `Spot: ${raw.key} — ~${prePct}%ile of hands. vs the ${aggressor.position} ${aggressor.type}'s opening range. ${tags}`
         : `Spot: ${raw.key} — ~${prePct}%ile of hands. ${tags}`;
@@ -2072,12 +2206,15 @@
     if (aggressor) {
       const parts = [];
       const raiseInPlay = rec === 'raise' || heroAction === 'raise' || heroAction === 'bet';
+      meta.evRaiseInPlay = raiseInPlay;
       if (raiseInPlay && equityPct != null) {
         const f = FOLD_TO_RAISE[aggressor.type] != null ? FOLD_TO_RAISE[aggressor.type] : 0.45;
+        meta.evFoldPct = pctOf(f);
         parts.push(`Raise EV ≈ fold branch (${aggressor.position} ${aggressor.type} folds ~${pctOf(f)}%)`
           + ` + showdown branch (~${equityPct}% when called)`);
       }
       const dm = defenseMath(ts.pot || 0, toCall);
+      meta.evMdfPct = dm ? pctOf(dm.mdf) : null;
       if (dm) parts.push(`MDF ~${pctOf(dm.mdf)}% — defend that share of your range; folding the bottom is fine`);
       if (parts.length) ev = parts.join('. ') + '.';
     }
@@ -2101,9 +2238,20 @@
         ? Players.decidePostflop(Postflop.postflopScore(heroCards, board).score, PROFILES[heroType],
             { facingBet: toCall > 0, raisesSoFar: ts.raisesSoFar || 0, texture: Postflop.boardTexture(board) })
         : decideActionByType(preflopE(heroCards, ts), PROFILES[heroType], { raisesSoFar: ts.raisesSoFar || 0 });
-      text += fitNote(normalizeForLadder(heroAction, board.length), typeAction, heroType, tier);
+      const haN = normalizeForLadder(heroAction, board.length);
+      text += fitNote(haN, typeAction, heroType, tier);
+      const rel = haN === typeAction ? 'same'
+        : ((tier[haN] != null ? tier[haN] : 1) - (tier[typeAction] != null ? tier[typeAction] : 1) > 0 ? 'looser' : 'tighter');
+      meta.fit = { type: heroType, typeAction, relation: rel };
     }
-    return { verdict, text, rule, grade, optimal, short, analysis, ev };
+
+    meta.spot = aggressor ? 'facing' : (board.length ? 'noBet' : 'opening');
+    meta.rec = rec; meta.verdict = verdict; meta.grade = grade;
+    meta.equityPct = equityPct; meta.neededPct = neededPct;
+
+    const out = { verdict, text, rule, grade, optimal, short, analysis, ev };
+    if (lang === 'he') Object.assign(out, renderHE(meta));
+    return out;
   }
 
   return { heroLiveScore, recommendAction, evaluateHeroDecision, recommendPostflop, evaluatePostflopDecision, coachTip,
@@ -2374,6 +2522,9 @@
     assignSeatTypes();
     let buttonSeat = 6;
     let heroType = 'TAG';
+    // Coaching language ('en' | 'he'); affects ONLY the coaching panel + feedback banner.
+    let lang = 'en';
+    try { if (localStorage.getItem('nlh-lang') === 'he') lang = 'he'; } catch (e) {}
     let decisionStats = { total: 0, optimal: 0, A: 0, B: 0, C: 0, F: 0, loose: 0, tight: 0 };
     function resetStats() { decisionStats = { total: 0, optimal: 0, A: 0, B: 0, C: 0, F: 0, loose: 0, tight: 0 }; }
     let lastDecision = null;
@@ -2535,6 +2686,7 @@
       renderResult();
       renderHeroInfo();
       renderHeroTypeSelector();
+      renderLangSelector();
       fitTable();
       renderSummary();
     }
@@ -2566,6 +2718,29 @@
         b.addEventListener('click', () => { heroType = t; render(); });
         host.appendChild(b);
       }
+    }
+
+    function renderLangSelector() {
+      const host = document.getElementById('langSel');
+      if (!host) return;
+      host.innerHTML = '';
+      [['en', 'EN'], ['he', 'עברית']].forEach(([code, label]) => {
+        const b = document.createElement('button');
+        b.className = 'typebtn' + (code === lang ? ' active' : '');
+        b.textContent = label;
+        b.addEventListener('click', () => {
+          lang = code;
+          try { localStorage.setItem('nlh-lang', code); } catch (e) {}
+          // Re-render the LAST decision in the new language from its stored inputs (no state change,
+          // no stat change — verdict/grade are language-neutral and already counted).
+          if (lastDecision && lastDecision._action) {
+            lastDecision = buildDecision(lastDecision._action, lastDecision._cards, lastDecision._board, lastDecision._faced);
+            setFeedback(lastDecision.short, lastDecision.verdict);
+          }
+          render();
+        });
+        host.appendChild(b);
+      });
     }
 
     function toggle(seat) { if (revealed.has(seat)) revealed.delete(seat); else revealed.add(seat); render(); }
@@ -2692,6 +2867,14 @@
       if (opt.canAllIn) mk('All-in $' + allInTotal, () => act('allin'), 'danger');
     }
 
+    // Compute a coaching decision in the current language and stash its raw inputs so the
+    // language toggle can re-render the SAME spot without replaying game state.
+    function buildDecision(action, cards, board, faced) {
+      const d = C.coachTip(action, cards, board, faced, heroType, lang);
+      d._action = action; d._cards = cards; d._board = board; d._faced = faced;
+      return d;
+    }
+
     function act(action, opts) {
       const st = hand.state();
       const board = hand.board();
@@ -2702,7 +2885,7 @@
         : action;
       // Compute the tip on the state the hero FACED (before applying the action).
       const tState = Object.assign({}, st, { heroSeat: HERO_SEAT });
-      const fb = C.coachTip(aNorm, hero, board, tState, heroType);
+      const fb = buildDecision(aNorm, hero, board, tState);
       decisionStats.total += 1;
       if (fb.optimal) decisionStats.optimal += 1;
       if (decisionStats[fb.grade] != null) decisionStats[fb.grade] += 1;
@@ -2743,13 +2926,21 @@
 
     function setFeedback(text, verdict) {
       const el = document.getElementById('feedback');
-      el.textContent = text || ''; el.className = 'feedback' + (verdict ? ' ' + verdict : '');
+      el.textContent = text || '';
+      el.className = 'feedback' + (verdict ? ' ' + verdict : '') + (lang === 'he' ? ' rtl' : '');
+      el.setAttribute('dir', lang === 'he' ? 'rtl' : 'ltr');
     }
 
     function escapeHtml(s) {
       return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     }
     function summaryTakeaway(d) {
+      if (lang === 'he') {
+        if (d.total < 3) return 'שחק עוד כמה ידיים לקבלת תמונה.';
+        if (d.loose - d.tight >= 2) return 'אתה משחק רחב מדי — קפל יותר בלי המחיר.';
+        if (d.tight - d.loose >= 2) return 'אתה מקפל יותר מדי — המשך רחב יותר כשיש לך את הסיכויים.';
+        return 'מאוזן יפה — כל הכבוד.';
+      }
       if (d.total < 3) return 'Play a few more hands for a read.';
       if (d.loose - d.tight >= 2) return "You're playing too loose — fold more without the price.";
       if (d.tight - d.loose >= 2) return "You're over-folding — continue wider when you have the odds.";
@@ -2759,13 +2950,21 @@
     function renderSummary() {
       const box = document.getElementById('summaryBox');
       if (!box) return;
+      const he = lang === 'he';
+      box.className = 'summarybox' + (he ? ' rtl' : '');
+      box.setAttribute('dir', he ? 'rtl' : 'ltr');
       const d = decisionStats;
       const net = session.heroNet();
       const acc = d.total ? Math.round(100 * d.optimal / d.total) : 0;
-      const stats = 'Net <span class="net ' + (net >= 0 ? 'pos' : 'neg') + '">' + (net >= 0 ? '+' : '') + '$' + net + '</span>'
-        + ' · Decisions ' + d.total + ' · Optimal ' + d.optimal + ' (' + acc + '%)'
-        + ' · Grades A ' + d.A + ' · B ' + d.B + ' · C ' + d.C + ' · F ' + d.F;
-      let html = '<div class="sb-title">Coaching &amp; session</div>';
+      const L = he
+        ? { title: 'אימון ומשחק', net: 'נטו', dec: 'החלטות', opt: 'אופטימלי', grades: 'ציונים',
+            placeholder: 'קבל החלטה — האימון המלא והנתונים יופיעו כאן.' }
+        : { title: 'Coaching &amp; session', net: 'Net', dec: 'Decisions', opt: 'Optimal', grades: 'Grades',
+            placeholder: 'Make a decision — your full coaching and session stats appear here.' };
+      const stats = L.net + ' <span class="net ' + (net >= 0 ? 'pos' : 'neg') + '">' + (net >= 0 ? '+' : '') + '$' + net + '</span>'
+        + ' · ' + L.dec + ' ' + d.total + ' · ' + L.opt + ' ' + d.optimal + ' (' + acc + '%)'
+        + ' · ' + L.grades + ' A ' + d.A + ' · B ' + d.B + ' · C ' + d.C + ' · F ' + d.F;
+      let html = '<div class="sb-title">' + L.title + '</div>';
       if (lastDecision) {
         html += '<div class="sb-decision ' + (lastDecision.verdict || '') + '">' + escapeHtml(lastDecision.text) + '</div>';
         if (lastDecision.analysis)
@@ -2774,7 +2973,7 @@
           html += '<div class="sb-ev">' + escapeHtml(lastDecision.ev) + '</div>';
         html += '<div class="sb-rule">💡 ' + escapeHtml(lastDecision.rule) + '</div>';
       } else {
-        html += '<div class="sb-decision">Make a decision — your full coaching and session stats appear here.</div>';
+        html += '<div class="sb-decision">' + L.placeholder + '</div>';
       }
       html += '<div class="sb-stats">' + stats + '</div>';
       if (d.total > 0) html += '<div class="sb-tip">💡 ' + escapeHtml(summaryTakeaway(d)) + '</div>';
