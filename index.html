@@ -146,7 +146,7 @@
     <button id="newGameBtn" class="secondary">New Game</button>
   </div>
   <div id="summaryBox" class="summarybox"></div>
-  <div class="version">V1.06</div>
+  <div class="version">V1.07</div>
 
   <script>
 // UMD-style module: works in Node (module.exports) and browser (window.Engine).
@@ -1987,13 +1987,19 @@
       villainBettingRange = board.length ? Equity.bettingRange(keys, board, aggressor.type) : keys;
       const range = villainBettingRange;
       const equity = Equity.equityVsRange(heroCards, board, range, {});
-      const required = toCall / ((ts.pot || 0) + toCall);
+      const required = toCall / ((ts.pot || 0) + toCall);   // heads-up price vs the raiser
       const extra = Math.max(0, activeOpps - 1);
-      const requiredAdj = Math.min(0.95, required * (1 + 0.10 * extra));
-      if (equity >= requiredAdj + 0.15) rec = 'raise';
-      else if (equity >= requiredAdj) rec = 'call';
+      const callBar = Math.min(0.95, required * (1 + 0.10 * extra)); // multiway-aware CALL price
+      // Fold equity: a raise wins the pot outright when the raiser folds and live players behind
+      // fold to the raise. Credit grows with the number of players still to fold out. A raise is
+      // judged on being ahead of the raiser's range (heads-up) once this credit is counted -- NOT
+      // on the multiway CALL price -- so an ahead-of-range 3-bet that folds the field is not
+      // mislabeled "too loose". Floor: never recommend raising a hand that cannot even call.
+      const foldEquityCredit = Math.min(0.20, 0.06 + 0.04 * extra);
+      if (equity >= callBar && equity + foldEquityCredit >= 0.50) rec = 'raise';
+      else if (equity >= callBar) rec = 'call';
       else rec = 'fold';
-      equityPct = pctOf(equity); neededPct = pctOf(requiredAdj);
+      equityPct = pctOf(equity); neededPct = pctOf(callBar);
       const where = board.length ? `On ${board.map(c => c.rank + c.suit).join('')} ` : '';
       const multi = extra > 0 ? ` (×${(1 + 0.10 * extra).toFixed(1)} multiway)` : '';
       core = `${where}you have ~${equityPct}% vs the ${aggressor.position} ${aggressor.type}'s betting range; the bet lays ~${neededPct}%${multi}`;
