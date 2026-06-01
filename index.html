@@ -71,6 +71,7 @@
   .summarybox .sb-title { font-size:11px; letter-spacing:1px; text-transform:uppercase; color:#7fae90; margin-bottom:6px; }
   .summarybox .sb-decision { font-size:15px; line-height:1.45; color:#e8f3ec; }
   .summarybox .sb-decision.good { color:#9be59b; } .summarybox .sb-decision.loose { color:#f3c969; } .summarybox .sb-decision.tight { color:#f39b9b; }
+  .summarybox .sb-analysis { font-size:13px; color:#bcd2c4; margin-top:5px; }
   .summarybox .sb-rule { font-size:13px; color:#9fc6e0; margin-top:5px; }
   .summarybox .sb-stats { font-size:13px; color:#cfe6d6; margin-top:9px; padding-top:9px; border-top:1px solid #29402f; }
   .summarybox .sb-stats .net.pos { color:#9be59b; } .summarybox .sb-stats .net.neg { color:#f39b9b; }
@@ -122,7 +123,7 @@
     .feedback { font-size:12px; }
     .summarybox { max-width:94vw; padding:10px 12px; }
     .summarybox .sb-decision { font-size:13px; }
-    .summarybox .sb-rule, .summarybox .sb-stats, .summarybox .sb-tip { font-size:12px; }
+    .summarybox .sb-analysis, .summarybox .sb-rule, .summarybox .sb-stats, .summarybox .sb-tip { font-size:12px; }
     .heroInfo { font-size:12px; }
     .setuplabel { display:block; width:100%; margin:0 0 3px; font-size:12px; }
   }
@@ -145,7 +146,7 @@
     <button id="newGameBtn" class="secondary">New Game</button>
   </div>
   <div id="summaryBox" class="summarybox"></div>
-  <div class="version">V1.05</div>
+  <div class="version">V1.06</div>
 
   <script>
 // UMD-style module: works in Node (module.exports) and browser (window.Engine).
@@ -1904,6 +1905,67 @@
     return verdict === 'loose' ? '❌ Too loose' : '❌ Too tight';
   }
 
+  // ---- deeper spot-analysis helpers (read-only) ----
+  function boardRead(board) {
+    const t = Postflop.boardTexture(board);
+    const top = Math.max.apply(null, board.map(c => Engine.rankValue(c.rank)));
+    const wet = t.monotone ? 'monotone'
+      : (t.connected && t.twoTone) ? 'wet, connected, two-tone'
+      : t.connected ? 'connected' : t.twoTone ? 'two-tone' : 'dry';
+    const topLabel = top >= 12 ? ((top === 14 ? 'A' : top === 13 ? 'K' : 'Q') + '-high')
+      : top <= 8 ? 'low' : 'middling';
+    return wet + ', ' + topLabel + (t.paired ? ', paired' : '');
+  }
+  function handRole(ps) {
+    const cls = Players.classifyPostflop(ps);
+    return cls === 'monster' ? 'value (strong)' : cls === 'strong' ? 'value'
+      : cls === 'medium' ? 'bluff-catcher' : cls === 'draw' ? 'draw (semi-bluff)' : 'air';
+  }
+  function rangePercentile(heroCards, board, heroType, heroPos, ctx) {
+    const r = Ranges.rangeFor(heroType || 'TAG', heroPos, ctx || { raisesBefore: 0 });
+    const keys = Object.keys(r.keyToAction).filter(k => r.keyToAction[k] !== 'fold');
+    if (!keys.length) return 50;
+    return Math.round(100 * Equity.equityVsRange(heroCards, board, keys, {}));
+  }
+  function villainReps(weighted, board, used) {
+    if (!board || !board.length) return 'their opening range';
+    let value = 0, draw = 0, air = 0, tot = 0;
+    for (const it of weighted) {
+      let combo = null;
+      for (const cand of Equity.combosForKey(it.key)) { if (!cand.some(c => used.has(c.rank + c.suit))) { combo = cand; break; } }
+      if (!combo) continue;
+      const cls = Players.classifyPostflop(Postflop.postflopScore(combo, board));
+      const w = it.weight != null ? it.weight : 1; tot += w;
+      if (cls === 'monster' || cls === 'strong') value += w;
+      else if (cls === 'draw') draw += w;
+      else if (cls === 'air') air += w;
+    }
+    if (!tot) return 'a mixed range';
+    const v = value / tot, d = draw / tot, a = air / tot;
+    if (v >= 0.55) return 'value-heavy (top pair+)';
+    if (d >= 0.30 && v >= 0.30) return 'polarized (value + draws)';
+    if (a >= 0.40) return 'wide / airy';
+    return 'a mixed range';
+  }
+  function conceptTags(o) {
+    const tags = [];
+    const t = (o.board && o.board.length) ? Postflop.boardTexture(o.board) : null;
+    const wet = t && (t.connected || t.monotone || t.twoTone);
+    if (o.facingBet) tags.push('pot odds');
+    if (o.role === 'bluff-catcher' && o.facingBet) tags.push('bluff-catch');
+    if ((o.rec === 'bet' || o.rec === 'raise') && wet) tags.push('protection');
+    if (o.draws && (o.draws.flushDraw || o.draws.openEnded || o.draws.gutshot)) tags.push('draw');
+    if (o.board && o.board.length) {
+      const top = Math.max.apply(null, o.board.map(c => Engine.rankValue(c.rank)));
+      if (o.heroCards.some(c => Engine.rankValue(c.rank) === top)) tags.push('blockers');
+    }
+    if (!o.facingBet && o.board && o.board.length) tags.push(o.rec === 'bet' ? 'value bet' : 'pot control');
+    if (o.preflop) tags.push(o.openingPre ? 'open' : (o.rec === 'raise' ? '3-bet' : 'pot odds'));
+    const seen = {}; const uniq = tags.filter(x => (seen[x] ? false : (seen[x] = true)));
+    return uniq.slice(0, 4);
+  }
+  function tagStr(tags) { return tags.map(x => '[' + x + ']').join(' '); }
+
   // Range- & opponent-aware tip. heroAction normalized to fold|check|call|bet|raise.
   function coachTip(heroAction, heroCards, board, ts, heroType) {
     board = board || [];
@@ -1914,6 +1976,7 @@
 
     let rec, core, why, rule;
     let equityPct = null, neededPct = null; // for the cost clause (facing-a-bet only)
+    let villainBettingRange = null;         // reused by the spot analysis
     if (aggressor && Ranges && Equity) {
       // The aggressor's range is what they had when THEY raised: raises before their action =
       // raisesSoFar - 1 (a lone open-raiser -> opening range, not a 3-bet range).
@@ -1921,7 +1984,8 @@
       const r = Ranges.rangeFor(aggressor.type, aggressor.position, { raisesBefore: aggRaisesBefore });
       let keys = Object.keys(r.keyToAction).filter(k => r.keyToAction[k] === 'raise');
       if (!keys.length) keys = Object.keys(r.keyToAction).filter(k => r.keyToAction[k] !== 'fold');
-      const range = board.length ? Equity.bettingRange(keys, board, aggressor.type) : keys;
+      villainBettingRange = board.length ? Equity.bettingRange(keys, board, aggressor.type) : keys;
+      const range = villainBettingRange;
       const equity = Equity.equityVsRange(heroCards, board, range, {});
       const required = toCall / ((ts.pot || 0) + toCall);
       const extra = Math.max(0, activeOpps - 1);
@@ -1961,6 +2025,30 @@
     const grade = gap === 0 ? 'A' : gap === 1 ? 'B' : gap === 2 ? 'C' : 'F';
     const optimal = gap === 0;
 
+    // ---- deeper spot analysis (read-only) ----
+    const heroPos = heroPositionOf(ts);
+    let analysis;
+    if (board.length) {
+      const ps = Postflop.postflopScore(heroCards, board);
+      const role = handRole(ps);
+      const pct = rangePercentile(heroCards, board, heroType, heroPos, { raisesBefore: ts.raisesSoFar || 0 });
+      const tags = tagStr(conceptTags({ facingBet: !!aggressor, board, rec, role, draws: ps.draws, heroCards, preflop: false }));
+      if (aggressor) {
+        const used = new Set(board.map(c => c.rank + c.suit));
+        const reps = villainReps(villainBettingRange, board, used);
+        analysis = `Spot: ${boardRead(board)}. Your hand: ${role} (~${pct}%ile of your range). They rep ${reps}. ${tags}`;
+      } else {
+        analysis = `Spot: ${boardRead(board)}. Your hand: ${role} (~${pct}%ile). ${tags}`;
+      }
+    } else {
+      const raw = Engine.rawScore(heroCards[0], heroCards[1]);
+      const prePct = Math.round(100 * (169 - raw.rank + 1) / 169);
+      const tags = tagStr(conceptTags({ facingBet: !!aggressor, board, rec, role: null, draws: null, heroCards, preflop: true, openingPre: !aggressor }));
+      analysis = aggressor
+        ? `Spot: ${raw.key} — ~${prePct}%ile of hands. vs the ${aggressor.position} ${aggressor.type}'s opening range. ${tags}`
+        : `Spot: ${raw.key} — ~${prePct}%ile of hands. ${tags}`;
+    }
+
     // Concise live line: verdict + grade + the decisive number.
     const gradeTag = ` (${grade})`;
     let short;
@@ -1982,10 +2070,11 @@
         : decideActionByType(preflopE(heroCards, ts), PROFILES[heroType], { raisesSoFar: ts.raisesSoFar || 0 });
       text += fitNote(normalizeForLadder(heroAction, board.length), typeAction, heroType, tier);
     }
-    return { verdict, text, rule, grade, optimal, short };
+    return { verdict, text, rule, grade, optimal, short, analysis };
   }
 
-  return { heroLiveScore, recommendAction, evaluateHeroDecision, recommendPostflop, evaluatePostflopDecision, coachTip };
+  return { heroLiveScore, recommendAction, evaluateHeroDecision, recommendPostflop, evaluatePostflopDecision, coachTip,
+    boardRead, handRole, rangePercentile, villainReps, conceptTags };
 });
 
 </script>
@@ -2645,8 +2734,10 @@
         + ' · Grades A ' + d.A + ' · B ' + d.B + ' · C ' + d.C + ' · F ' + d.F;
       let html = '<div class="sb-title">Coaching &amp; session</div>';
       if (lastDecision) {
-        html += '<div class="sb-decision ' + (lastDecision.verdict || '') + '">' + escapeHtml(lastDecision.text) + '</div>'
-          + '<div class="sb-rule">💡 ' + escapeHtml(lastDecision.rule) + '</div>';
+        html += '<div class="sb-decision ' + (lastDecision.verdict || '') + '">' + escapeHtml(lastDecision.text) + '</div>';
+        if (lastDecision.analysis)
+          html += '<div class="sb-analysis">' + escapeHtml(lastDecision.analysis) + '</div>';
+        html += '<div class="sb-rule">💡 ' + escapeHtml(lastDecision.rule) + '</div>';
       } else {
         html += '<div class="sb-decision">Make a decision — your full coaching and session stats appear here.</div>';
       }
