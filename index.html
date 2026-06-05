@@ -99,6 +99,44 @@
   .typebtn { padding:4px 9px; margin:0 2px; font-size:12px; border-radius:6px; border:1px solid #3a5; background:#1d2b22; color:#cfe6d6; cursor:pointer; }
   .typebtn.active { background:#3a8f5a; color:#fff; border-color:#5fd089; }
   .guide-btn { padding:4px 10px; margin:0 2px; font-size:12px; border-radius:6px; border:1px solid #3a5; background:#1d2b22; color:#5fd089; cursor:pointer; text-decoration:none; display:inline-block; }
+  /* --- Opponent action animation --- */
+  /* Glow ring on the seat that is acting right now. */
+  .seat.acting { animation: seatpulse 1.05s ease-out; }
+  @keyframes seatpulse {
+    0%   { filter: drop-shadow(0 0 0 rgba(232,198,107,0)); }
+    25%  { filter: drop-shadow(0 0 12px rgba(232,198,107,.95)); }
+    100% { filter: drop-shadow(0 0 0 rgba(232,198,107,0)); }
+  }
+  /* Floating action label that pops above the acting seat. */
+  .actionpop { position:absolute; left:50%; top:-16px; transform:translateX(-50%); z-index:9;
+    padding:3px 10px; border-radius:13px; font-size:13px; font-weight:800; letter-spacing:.4px;
+    white-space:nowrap; color:#fff; box-shadow:0 2px 9px rgba(0,0,0,.6); animation: poplabel .55s ease-out; }
+  .actionpop.fold  { background:#7a2b3c; }
+  .actionpop.check { background:#3a5a45; }
+  .actionpop.call  { background:#2f5fa8; }
+  .actionpop.raise { background:#d8643c; }
+  .actionpop.allin { background:#a8324a; box-shadow:0 0 12px #ff7b7b; }
+  @keyframes poplabel {
+    0%   { opacity:0; transform:translateX(-50%) translateY(9px) scale(.7); }
+    40%  { opacity:1; transform:translateX(-50%) translateY(0) scale(1.1); }
+    100% { opacity:1; transform:translateX(-50%) translateY(0) scale(1); }
+  }
+  /* A chip token that glides from the acting seat toward the pot. */
+  .flychip { position:absolute; transform:translate(-50%,-50%); z-index:7; font-size:17px;
+    pointer-events:none; animation: flytopot .5s ease-in forwards; }
+  @keyframes flytopot {
+    from { transform:translate(-50%,-50%); opacity:1; }
+    to   { transform:translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))); opacity:.2; }
+  }
+  /* Newly dealt board cards flip in. */
+  .card.dealing { animation: dealin .45s ease-out; }
+  @keyframes dealin {
+    0%   { transform:rotateY(90deg) scale(.6); opacity:0; }
+    60%  { transform:rotateY(0deg) scale(1.06); opacity:1; }
+    100% { transform:none; }
+  }
+  /* Subtle "opponents acting" hint under the table. */
+  .actinghint { text-align:center; font-size:12px; color:#cdeccd; min-height:16px; letter-spacing:.5px; opacity:.85; }
   /* Phone: shrink the range matrix overlay + buttons/chrome so it's compact, not oversized. */
   @media (max-width: 560px) {
     h1 { font-size:15px; margin:6px 8px; }
@@ -137,6 +175,7 @@
   <h1>NLH Trainer — Stacks · All-ins · Side Pots</h1>
   <div class="session" id="session"></div>
   <div class="tablewrap" id="tablewrap"><div class="table" id="table"></div></div>
+  <div id="actingHint" class="actinghint"></div>
   <div id="controls" class="controls"></div>
   <div id="feedback" class="feedback"></div>
   <div id="result" class="result"></div>
@@ -156,7 +195,7 @@
     <a href="guide-he.html" class="guide-btn">📖 מדריך</a>
   </div>
   <div id="summaryBox" class="summarybox"></div>
-  <div class="version">V1.17</div>
+  <div class="version">V1.18</div>
   <div style="text-align:center; font-size:12px; margin:-10px 0 20px;"><a href="guide-he.html" style="color:#5fd089; text-decoration:none;">📖 מדריך למשתמש בעברית</a></div>
 
   <script>
@@ -2397,6 +2436,11 @@
     let round = null;
     let preflopAggressor = null; // 3C: the preflop raiser (initiative), null if limped
 
+    // Cumulative, street-tagged action log across all rounds (for UI replay/animation).
+    const roundLogs = [];        // [{ street, log: [...] }] for rounds already absorbed
+    let curRoundStreet = 'preflop';
+    let curRoundAbsorbed = false; // true once the live round's log is in roundLogs
+
     // (a) remainingStack: what a seat has left to bet this hand (starting stack minus already committed).
     function remainingStack(seat) {
       if (!stacks) return undefined;
@@ -2413,6 +2457,8 @@
     }
 
     function makeRound(mode, liveOrderSeats, startingPot) {
+      curRoundStreet = STREETS[streetIndex] || 'preflop';
+      curRoundAbsorbed = false;
       const liveSet = new Set(liveOrderSeats);
       const roundSeats = seats.filter(s => liveSet.has(s.seat));
       const cfg = {
@@ -2445,6 +2491,9 @@
     function absorbRound() {
       // Fold contributions into totalCommitted and grossCommitted; update liveSeats.
       const st = round.state();
+      // Snapshot this round's ordered action log (street-tagged) before we move on.
+      roundLogs.push({ street: STREETS[streetIndex] || 'preflop', log: (st.log || []).map(e => ({ ...e })) });
+      curRoundAbsorbed = true;
       for (const p of st.players) {
         totalCommitted[p.seat] += p.committed;
         grossCommitted[p.seat] += p.committed;
@@ -2555,6 +2604,16 @@
       // (g) Expose payouts() and contributions() for chip conservation.
       payouts: () => Object.assign({}, finalPayouts),
       contributions: () => Object.assign({}, grossCommitted),
+      // Cumulative ordered action log across all streets so far (for UI replay/animation).
+      // Each entry: { seat, position, type, action, amount, raisesBefore, street }.
+      actionLog: () => {
+        const out = [];
+        for (const r of roundLogs) for (const e of r.log) out.push({ ...e, street: r.street });
+        if (!curRoundAbsorbed) {
+          for (const e of round.state().log) out.push({ ...e, street: curRoundStreet });
+        }
+        return out;
+      },
       state: () => {
         const st = round.state();
         return {
@@ -2615,12 +2674,110 @@
     let lastDecision = null;
     let hand = null, hero = null, revealed = new Set(), settled = false, rebuysToShow = [];
 
+    // --- Opponent-action animation state ---
+    // When animFrame is non-null, render() draws a reconstructed mid-sequence "frame" instead of
+    // the engine's final state, so each opponent's action plays out one at a time.
+    let animFrame = null;
+    let animTimer = null;
+    let animEpoch = 0;      // bumped on every cancel so stale scheduled steps abort
+    let animEnabled = true; // set false to render final state instantly (headless screenshots/tests)
+    function animating() { return animFrame !== null; }
+    function cancelAnim() { animEpoch++; if (animTimer) { clearTimeout(animTimer); animTimer = null; } }
+    function finishAnim() { cancelAnim(); animFrame = null; render(); }
+    function boardCountFor(street) {
+      return street === 'preflop' ? 0 : street === 'flop' ? 3 : street === 'turn' ? 4 : 5;
+    }
+    function actionLabel(e) {
+      switch (e.action) {
+        case 'fold': return 'FOLD';
+        case 'check': return 'CHECK';
+        case 'call': return 'CALL $' + e.amount;
+        case 'bet': return 'BET $' + e.amount;
+        case 'raise': return 'RAISE $' + e.amount;
+        case 'all-in': return 'ALL-IN $' + e.amount;
+        default: return String(e.action).toUpperCase();
+      }
+    }
+    function actionKind(action) {
+      if (action === 'fold') return 'fold';
+      if (action === 'check') return 'check';
+      if (action === 'call') return 'call';
+      if (action === 'all-in') return 'allin';
+      return 'raise'; // bet / raise
+    }
+    function actionDelay(e) {
+      if (e.action === 'fold' || e.action === 'check') return 460;
+      if (e.action === 'all-in') return 760;
+      return 640; // bet / call / raise — leave time for the chip to glide
+    }
+    // Construct the pre-action "blinds only" state for the opening (deal-time) animation.
+    function blindsBaseState() {
+      const seatsInfo = E.seatsWithPositions(NUM_SEATS, buttonSeat);
+      const stacks = session.stacks();
+      const players = [];
+      for (let s = 0; s < NUM_SEATS; s++) {
+        const pos = seatsInfo.find(x => x.seat === s).position;
+        const committed = pos === 'SB' ? SB : pos === 'BB' ? BB : 0;
+        players.push({ seat: s, position: pos, type: s === HERO_SEAT ? null : seatTypes[s],
+          status: 'active', lastAction: null, committed, stack: stacks[s] - committed, allIn: false,
+          totalCommitted: committed });
+      }
+      return { street: 'preflop', pot: SB + BB, currentBet: BB, raisesSoFar: 0, players };
+    }
+    // Replay `entries` (ordered, street-tagged action log) over a mutable copy of `base`,
+    // rendering one reconstructed frame per action with spotlight + label + gliding chip.
+    function playActions(base, entries) {
+      cancelAnim();
+      const myEpoch = animEpoch; // this run's identity; a later cancel invalidates pending steps
+      if (!animEnabled || !entries || !entries.length) { animFrame = null; render(); return; }
+      const frame = {
+        street: base.street, pot: base.pot, currentBet: base.currentBet,
+        raisesSoFar: base.raisesSoFar || 0,
+        players: base.players.map(p => ({ seat: p.seat, position: p.position, type: p.type,
+          status: p.status, lastAction: p.lastAction, committed: p.committed, stack: p.stack,
+          allIn: p.allIn, totalCommitted: p.totalCommitted })),
+      };
+      const fullBoard = hand.board();             // all dealt cards (engine already advanced)
+      let bc = boardCountFor(base.street);
+      let i = 0;
+      function step() {
+        if (myEpoch !== animEpoch) return; // a newer deal/action/cancel superseded this run
+        if (i >= entries.length) { finishAnim(); return; }
+        const e = entries[i++];
+        const prevBc = bc;
+        if (e.street !== frame.street) {            // street boundary: sweep chips, deal board
+          for (const p of frame.players) { p.committed = 0; if (p.status !== 'folded') p.lastAction = null; }
+          frame.street = e.street; frame.currentBet = 0; bc = boardCountFor(e.street);
+        }
+        const p = frame.players.find(x => x.seat === e.seat);
+        let fly = false;
+        if (e.action === 'fold') { p.status = 'folded'; p.lastAction = 'fold'; }
+        else {
+          const amt = e.amount || 0;
+          p.committed += amt; p.stack -= amt; frame.pot += amt; p.lastAction = e.action;
+          if (e.action === 'all-in') p.allIn = true;
+          if (amt > 0) { fly = true; if (p.committed > frame.currentBet) frame.currentBet = p.committed; }
+        }
+        animFrame = {
+          st: { street: frame.street, pot: frame.pot, currentBet: frame.currentBet,
+                raisesSoFar: frame.raisesSoFar, result: null,
+                players: frame.players.map(q => ({ ...q })) },
+          board: fullBoard.slice(0, bc), prevBoardCount: prevBc,
+          actor: e.seat, label: actionLabel(e), kind: actionKind(e.action), fly,
+        };
+        render();
+        animTimer = setTimeout(step, actionDelay(e));
+      }
+      step();
+    }
+
     function posOf(seat) { return E.seatsWithPositions(NUM_SEATS, buttonSeat).find(s => s.seat === seat).position; }
     function bb(amount) { return Math.round(amount / BB) + 'bb'; }
     // Format a 1-100 fine score as one-decimal X.X (e.g. 100 -> "10.0", 83 -> "8.3").
     function fmt10(score100) { return (score100 / 10).toFixed(1); }
 
     function deal() {
+      cancelAnim(); animFrame = null;
       buttonSeat = (buttonSeat + 1) % NUM_SEATS;
       const seats = E.seatsWithPositions(NUM_SEATS, buttonSeat)
         .map(s => ({ ...s, type: s.seat === HERO_SEAT ? null : seatTypes[s.seat] }));
@@ -2632,7 +2789,10 @@
       lastDecision = null;
       setFeedback('', ''); document.getElementById('result').textContent = '';
       closeOverlay();
-      render();
+      // Play the opponents who act before the hero's first decision (from blinds posted).
+      const opening = hand.actionLog();
+      if (opening.length) playActions(blindsBaseState(), opening);
+      else render();
     }
 
     // New Game: fresh session (new stacks + bankroll $0), new opponents, random button.
@@ -2655,11 +2815,15 @@
     }
 
     function render() {
-      const st = hand.state();
-      const board = hand.board();
-      settleIfDone();
+      const anim = !!animFrame;
+      const st = anim ? animFrame.st : hand.state();
+      const board = anim ? animFrame.board : hand.board();
+      if (!anim) settleIfDone();
       const table = document.getElementById('table');
       table.innerHTML = '';
+      // "Opponents acting…" hint while the action sequence plays.
+      const hintEl = document.getElementById('actingHint');
+      if (hintEl) hintEl.textContent = anim ? (lang === 'he' ? 'יריבים פועלים…  (לחץ על השולחן לדילוג)' : 'Opponents acting…  (tap the table to skip)') : '';
 
       // session header
       const net = session.heroNet();
@@ -2669,14 +2833,16 @@
 
       const center = document.createElement('div');
       center.className = 'center';
-      const boardHtml = board.map(c =>
-        `<div class="card ${E.suitColor(c.suit) === 'red' ? 'red' : ''}">${E.cardLabel(c)}</div>`).join('')
+      const boardHtml = board.map((c, idx) => {
+        const dealing = (anim && animFrame.prevBoardCount != null && idx >= animFrame.prevBoardCount) ? ' dealing' : '';
+        return `<div class="card ${E.suitColor(c.suit) === 'red' ? 'red' : ''}${dealing}">${E.cardLabel(c)}</div>`;
+      }).join('')
         || '<span style="color:#cdeccd;font-size:12px">(preflop)</span>';
-      const res = hand.result();
+      const res = anim ? null : hand.result();
       const heroCommitted = (st.players.find(p => p.seat === HERO_SEAT) || {}).committed || 0;
       const toCall = Math.max(0, st.currentBet - heroCommitted);
       let potLine = `🟡 Pot $${st.pot}` +
-        (toCall > 0 ? ` <span class="tocall">· $${toCall} to call</span>` : '');
+        (toCall > 0 && !anim ? ` <span class="tocall">· $${toCall} to call</span>` : '');
       if (res && res.pots && res.pots.length > 1) {
         potLine = res.pots.map((p, i) => (i === 0 ? 'Main $' : 'Side $') + p.amount).join(' · ');
       }
@@ -2687,7 +2853,7 @@
       // Bet chips: each player's chips committed THIS street, shown in front of them toward the pot.
       // (Hidden once the hand is settled / at showdown, since chips have moved to the pot.)
       const TABLE_CX = 360, TABLE_CY = 210; // center of the 720x420 table
-      if (!settled) {
+      if (anim || !settled) {
         for (let s = 0; s < NUM_SEATS; s++) {
           const pl = st.players.find(p => p.seat === s);
           if (!pl || !pl.committed || pl.status === 'folded') continue;
@@ -2764,12 +2930,38 @@
         const last = pl.lastAction ? `<div class="act">${pl.lastAction}</div>` : '';
         div.innerHTML = `<div class="pos">${posText}${typeText}</div>${stackLine}
           <div class="cards">${cardHtml}</div><div class="badge">${badge}</div>${last}${rebuyLine}`;
-        if (!isHero) { div.style.cursor = 'pointer'; div.addEventListener('click', () => { showOpponentRange(s); }); }
+        // Spotlight + floating label on the seat that is acting in this animation frame.
+        if (anim && animFrame.actor === s) {
+          div.classList.add('acting');
+          const pop = document.createElement('div');
+          pop.className = 'actionpop ' + (animFrame.kind || '');
+          pop.textContent = animFrame.label;
+          div.appendChild(pop);
+        }
+        if (!isHero && !anim) { div.style.cursor = 'pointer'; div.addEventListener('click', () => { showOpponentRange(s); }); }
         table.appendChild(div);
       }
 
-      renderControls();
-      renderResult();
+      // A chip token gliding from the acting seat toward the pot (for bets/calls/raises).
+      if (anim && animFrame.fly) {
+        const [sx, sy] = SEAT_XY[animFrame.actor];
+        const fly = document.createElement('div');
+        fly.className = 'flychip';
+        fly.textContent = '🪙';
+        fly.style.left = sx + 'px';
+        fly.style.top = sy + 'px';
+        fly.style.setProperty('--dx', (TABLE_CX - sx) + 'px');
+        fly.style.setProperty('--dy', (TABLE_CY - sy) + 'px');
+        table.appendChild(fly);
+      }
+
+      if (anim) {
+        document.getElementById('controls').innerHTML = '';
+        document.getElementById('result').textContent = '';
+      } else {
+        renderControls();
+        renderResult();
+      }
       renderHeroInfo();
       renderHeroTypeSelector();
       renderLangSelector();
@@ -2962,6 +3154,7 @@
     }
 
     function act(action, opts) {
+      if (animating()) return; // ignore input while the opponent sequence is playing
       const st = hand.state();
       const board = hand.board();
       const heroCommitted = (st.players.find(p => p.seat === HERO_SEAT) || {}).committed || 0;
@@ -2978,9 +3171,13 @@
       if (fb.verdict === 'loose') decisionStats.loose += 1;
       else if (fb.verdict === 'tight') decisionStats.tight += 1;
       lastDecision = fb;
+      // Snapshot the pre-action state, then let the engine resolve the hand forward.
+      const preState = hand.state();
+      const prevLogLen = hand.actionLog().length;
       hand.act(action, opts);
       setFeedback(fb.short, fb.verdict);
-      render();
+      // Animate hero's action + every opponent action that followed, one at a time.
+      playActions(preState, hand.actionLog().slice(prevLogLen));
     }
 
     function renderResult() {
@@ -3066,6 +3263,8 @@
       box.innerHTML = html;
     }
 
+    // Tap the table to skip the rest of the opponent-action animation.
+    document.getElementById('tablewrap').addEventListener('click', () => { if (animating()) finishAnim(); });
     document.getElementById('dealBtn').addEventListener('click', deal);
     document.getElementById('newGameBtn').addEventListener('click', newGame);
     document.getElementById('myRangeBtn').addEventListener('click', function () {
