@@ -153,7 +153,7 @@
     <span id="langSel"></span>
   </div>
   <div id="summaryBox" class="summarybox"></div>
-  <div class="version">V1.13</div>
+  <div class="version">V1.14</div>
 
   <script>
 // UMD-style module: works in Node (module.exports) and browser (window.Engine).
@@ -2118,8 +2118,9 @@
         : `מצב: ${m.preKey} — ~${m.prePct} אחוזון מהידיים. ${heTags(m.tagKeys)}`;
     } else {
       const head = `מצב: ${heBoardRead(m.boardReadEN)}. היד שלך: ${HE_ROLE[m.role] || m.role}`;
-      const heBetNote = m.isCbet ? ' (הימור-המשך — המעלה מהמר על טווח רחב)'
-        : m.isDonk ? ' (דונק-בט — לא-תוקפן, טווח הדוק יותר)' : '';
+      const heSizeNote = m.betSizePct != null ? `, ${m.betSizePct}% קופה` : '';
+      const heBetNote = m.isCbet ? ` (הימור-המשך${heSizeNote} — המעלה מהמר על טווח רחב)`
+        : m.isDonk ? ` (דונק-בט${heSizeNote} — לא-תוקפן, טווח הדוק יותר)` : '';
       analysis = m.aggressor
         ? `${head} (~${m.pct} אחוזון בטווח שלך). הם מייצגים ${HE_REPS[m.reps] || m.reps}${heBetNote}. ${heTags(m.tagKeys)}`
         : `${head} (~${m.pct} אחוזון). ${heTags(m.tagKeys)}`;
@@ -2158,10 +2159,22 @@
     // Donk: non-aggressor bets into the preflop raiser (value-heavy range, more cautious).
     const isCbet = !!(board.length && aggressor && ts.preflopAggressor != null && aggressor.seat === ts.preflopAggressor);
     const isDonk  = !!(board.length && aggressor && ts.preflopAggressor != null && aggressor.seat !== ts.preflopAggressor);
+    // Bet size as % of pot before the bet (toCall / pot-before-bet).
+    const preBetPot = (ts.pot || 0) - toCall;
+    const betSizePct = (toCall > 0 && preBetPot > 0) ? Math.round(100 * toCall / preBetPot) : null;
+    function betSizeLabel(p) {
+      if (p == null) return '';
+      if (p <= 25) return 'small probe';
+      if (p <= 45) return 'less than half-pot';
+      if (p <= 60) return 'half-pot';
+      if (p <= 80) return 'standard';
+      if (p <= 100) return 'large';
+      return 'overbet';
+    }
     // meta: raw values captured during the (unchanged) English pass, for Hebrew rendering.
     const meta = { heroAction, hasBoard: board.length > 0,
       aggressor: aggressor ? { position: aggressor.position, type: aggressor.type } : null,
-      isCbet, isDonk };
+      isCbet, isDonk, betSizePct };
 
     const ps = board.length ? Postflop.postflopScore(heroCards, board) : null;
     let raw = null; // set in opening branch, used for short enrichment
@@ -2246,8 +2259,9 @@
         const used = new Set(board.map(c => c.rank + c.suit));
         const reps = villainReps(villainBettingRange, board, used);
         meta.reps = reps;
-        const betTypeNote = isCbet ? ' (c-bet — raiser bets wide here)'
-          : isDonk ? ' (donk bet — non-aggressor, expect a tighter range)' : '';
+        const sizeNote = betSizePct != null ? `, ${betSizePct}% pot (${betSizeLabel(betSizePct)})` : '';
+        const betTypeNote = isCbet ? ` (c-bet${sizeNote} — raiser bets wide here)`
+          : isDonk ? ` (donk bet${sizeNote} — non-aggressor, expect a tighter range)` : '';
         analysis = `Spot: ${boardRead(board)}. Your hand: ${role} (~${pct}%ile of your range). They rep ${reps}${betTypeNote}. ${tags}`;
       } else {
         analysis = `Spot: ${boardRead(board)}. Your hand: ${role} (~${pct}%ile of your range). ${tags}`;
