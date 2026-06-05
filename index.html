@@ -98,6 +98,7 @@
   #setupRow .sep { color:#5a6; margin:0 6px; }
   .typebtn { padding:4px 9px; margin:0 2px; font-size:12px; border-radius:6px; border:1px solid #3a5; background:#1d2b22; color:#cfe6d6; cursor:pointer; }
   .typebtn.active { background:#3a8f5a; color:#fff; border-color:#5fd089; }
+  .guide-btn { padding:4px 10px; margin:0 2px; font-size:12px; border-radius:6px; border:1px solid #3a5; background:#1d2b22; color:#5fd089; cursor:pointer; text-decoration:none; display:inline-block; }
   /* Phone: shrink the range matrix overlay + buttons/chrome so it's compact, not oversized. */
   @media (max-width: 560px) {
     h1 { font-size:15px; margin:6px 8px; }
@@ -151,9 +152,11 @@
   <div class="controls" id="langRow">
     <span class="setuplabel">Coaching language:</span>
     <span id="langSel"></span>
+    <span class="sep">·</span>
+    <a href="guide-he.html" class="guide-btn">📖 מדריך</a>
   </div>
   <div id="summaryBox" class="summarybox"></div>
-  <div class="version">V1.16</div>
+  <div class="version">V1.17</div>
   <div style="text-align:center; font-size:12px; margin:-10px 0 20px;"><a href="guide-he.html" style="color:#5fd089; text-decoration:none;">📖 מדריך למשתמש בעברית</a></div>
 
   <script>
