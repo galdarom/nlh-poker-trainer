@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>מדריך למשתמש — NLH Trainer</title>
+<style>
+  :root {
+    --bg: #0f1e14;
+    --bg2: #16241c;
+    --bg3: #1d2f23;
+    --border: #2f5740;
+    --gold: #e8c66b;
+    --green: #9be59b;
+    --blue: #9fc6e0;
+    --muted: #bcd2c4;
+    --text: #e8f3ec;
+    --red: #f39b9b;
+    --yellow: #f3c969;
+    --accent: #5fd089;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--text); font-family: system-ui, Arial, sans-serif; font-size: 16px; line-height: 1.6; }
+  body { max-width: 820px; margin: 0 auto; padding: 24px 20px 60px; }
+
+  h1 { font-size: 26px; color: var(--gold); text-align: center; margin-bottom: 6px; }
+  .subtitle { text-align: center; color: var(--muted); font-size: 14px; margin-bottom: 36px; }
+
+  h2 { font-size: 19px; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 6px; margin: 36px 0 16px; }
+  h3 { font-size: 15px; color: var(--gold); margin: 22px 0 8px; }
+
+  p { color: var(--muted); margin-bottom: 10px; }
+  p strong { color: var(--text); }
+
+  .card-box {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+  }
+  .card-box.highlight { border-color: var(--accent); }
+
+  ul, ol { padding-right: 22px; margin-bottom: 10px; }
+  li { color: var(--muted); margin-bottom: 6px; }
+  li strong { color: var(--text); }
+
+  /* Grade pills */
+  .grade {
+    display: inline-block;
+    font-weight: 700;
+    font-size: 13px;
+    border-radius: 6px;
+    padding: 2px 9px;
+    margin: 0 2px;
+  }
+  .grade.A { background: #2d5e2d; color: #9be59b; }
+  .grade.B { background: #3a4a1a; color: #d4e87a; }
+  .grade.C { background: #5a3a0a; color: #f3c969; }
+  .grade.F { background: #5a1a1a; color: #f39b9b; }
+
+  /* Verdict labels */
+  .verdict { font-weight: 700; }
+  .verdict.good  { color: var(--green); }
+  .verdict.loose { color: var(--yellow); }
+  .verdict.tight { color: var(--red); }
+
+  /* Tag chips */
+  .tag {
+    display: inline-block;
+    background: #1d3a28;
+    color: var(--blue);
+    border: 1px solid #2f5740;
+    border-radius: 5px;
+    font-size: 12px;
+    padding: 1px 7px;
+    margin: 2px 2px;
+  }
+
+  /* Example coaching block */
+  .coaching-example {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin: 12px 0;
+    font-size: 14px;
+  }
+  .coaching-example .line { margin: 5px 0; }
+  .coaching-example .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #7fae90;
+    display: block;
+    margin-bottom: 2px;
+  }
+  .coaching-example .verdict-line { font-size: 15px; color: var(--text); }
+  .coaching-example .verdict-line.good  { color: var(--green); }
+  .coaching-example .verdict-line.tight { color: var(--red); }
+  .coaching-example .analysis-line { color: var(--muted); }
+  .coaching-example .ev-line  { color: #a9c6d8; }
+  .coaching-example .rule-line { color: var(--blue); }
+
+  /* Step numbers */
+  .step {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    margin-bottom: 14px;
+  }
+  .step-num {
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    background: var(--border);
+    border-radius: 50%;
+    color: var(--gold);
+    font-weight: 700;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .step-body { flex: 1; }
+  .step-body strong { color: var(--text); display: block; margin-bottom: 3px; }
+
+  /* Action buttons style */
+  .btn-demo {
+    display: inline-block;
+    background: var(--gold);
+    color: #222;
+    border-radius: 7px;
+    padding: 3px 10px;
+    font-size: 13px;
+    font-weight: 700;
+    margin: 0 3px;
+  }
+  .btn-demo.sec { background: #2f5740; color: #fff; }
+
+  /* Divider */
+  hr { border: none; border-top: 1px solid var(--border); margin: 30px 0; }
+
+  /* Responsive */
+  @media (max-width: 560px) {
+    body { padding: 16px 14px 40px; }
+    h1 { font-size: 22px; }
+    h2 { font-size: 17px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>🃏 NLH Trainer — מדריך מהיר</h1>
+<p class="subtitle">כיצד לשחק · בחירת סגנון משחק · כיצד לקרוא את האנליזה</p>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>חלק א׳ — כיצד להשתמש באפליקציה</h2>
+
+<div class="card-box highlight">
+  <h3 style="margin-top:0">מה האפליקציה עושה?</h3>
+  <p>המאמן מדמה שולחן Hold'em של 7 שחקנים. אתם שחקן האחד (Hero), שאר השחקנים הם בוטים עם אישיות שונות. בכל יד תקבלו ניתוח מיידי על כל החלטה שלכם — מה עשיתם, מה היה הנכון, ולמה.</p>
+</div>
+
+<h3>מבנה השולחן</h3>
+<div class="card-box">
+  <ul>
+    <li><strong>7 מקומות</strong> — Hero + 6 יריבים</li>
+    <li><strong>Blinds קבועות:</strong> 1/2</li>
+    <li><strong>סטאק התחלתי:</strong> 100BB לכל שחקן</li>
+    <li>הדילר (BTN) מתקדם ביד כל יד</li>
+  </ul>
+</div>
+
+<h3>צעדים בכל יד</h3>
+
+<div class="step">
+  <div class="step-num">1</div>
+  <div class="step-body">
+    <strong>קבלת קלפים</strong>
+    אתם רואים את 2 הקלפים שלכם. שאר השחקנים פועלים לפי הסדר (UTG → BTN → SB → BB).
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-num">2</div>
+  <div class="step-body">
+    <strong>תורכם — פריפלופ</strong>
+    לחצו על <span class="btn-demo">Fold</span> <span class="btn-demo">Call</span> <span class="btn-demo">Raise</span> — האנליזה מופיעה מיד.
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-num">3</div>
+  <div class="step-body">
+    <strong>פוסטפלופ — פלופ / טרן / ריבר</strong>
+    בכל סיבוב: <span class="btn-demo">Check</span> / <span class="btn-demo">Bet</span> / <span class="btn-demo">Call</span> / <span class="btn-demo">Raise</span> / <span class="btn-demo">Fold</span>. מחולל ניתוח לכל פעולה.
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-num">4</div>
+  <div class="step-body">
+    <strong>יד חדשה</strong>
+    לחצו <span class="btn-demo sec">Deal new hand</span> — הניתוח מתאפס, יד חדשה מתחילה.
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-num">5</div>
+  <div class="step-body">
+    <strong>משחק חדש</strong>
+    <span class="btn-demo sec">New game</span> מאפס את כל הסשן (סטאקים + הסטטיסטיקות).
+  </div>
+</div>
+
+<h3>אישיות יריבים</h3>
+<div class="card-box">
+  <p>כל יריב מקבל אחת מ-4 אישיות:</p>
+  <ul>
+    <li><strong>LP (Loose-Passive)</strong> — נכנס להרבה קופות, משלם קול בקלות. לעיתים נדירות מעלה.</li>
+    <li><strong>LAG (Loose-Aggressive)</strong> — מהמר ומעלה הרבה. טווח רחב. מסוכן לשחק מולו.</li>
+    <li><strong>TP (Tight-Passive)</strong> — רק ידיים חזקות, אך נוטה לקול ולא לרייז.</li>
+    <li><strong>TAG (Tight-Aggressive)</strong> — הסגנון "הנכון": טווח הדוק + אגרסיביות. המאמן מדרג ביחס לאיך TAG היה פועל.</li>
+  </ul>
+</div>
+
+<h3>🎯 בחירת סגנון המשחק שלכם</h3>
+<div class="card-box highlight">
+  <p>בחלק העליון של המסך תמצאו 4 כפתורי סגנון:</p>
+  <div style="margin: 10px 0 14px; text-align:center;">
+    <span class="btn-demo">LP</span>
+    <span class="btn-demo">LAG</span>
+    <span class="btn-demo" style="background:#3a8f5a;color:#fff;">TAG</span>
+    <span class="btn-demo">TP</span>
+  </div>
+  <p>הסגנון שתבחרו משפיע על הניתוח — המאמן ישווה <strong>כל פעולה שלכם</strong> לא רק לקו ה-TAG האובייקטיבי, אלא גם לאיך <em>הסגנון שבחרתם</em> היה מתנהג.</p>
+
+  <h3 style="margin-top:14px; font-size:14px; color:#e8c66b;">ארבעת הסגנונות</h3>
+  <table style="width:100%; border-collapse:collapse; font-size:13px; margin-top:6px;">
+    <thead>
+      <tr style="color:#7fae90; border-bottom:1px solid #2f5740;">
+        <th style="text-align:right; padding:5px 8px;">סגנון</th>
+        <th style="text-align:right; padding:5px 8px;">טווח פתיחה</th>
+        <th style="text-align:right; padding:5px 8px;">אגרסיביות</th>
+        <th style="text-align:right; padding:5px 8px;">מתאים ל</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #1d2f23;">
+        <td style="padding:7px 8px;"><strong>TAG</strong> ✅</td>
+        <td style="padding:7px 8px; color:#bcd2c4;">הדוק (~25% ידיים)</td>
+        <td style="padding:7px 8px; color:#bcd2c4;">גבוהה — רייז/בט בידיים טובות</td>
+        <td style="padding:7px 8px; color:#bcd2c4;">ברירת מחדל. הסגנון שהמאמן מדרג לפיו.</td>
+      </tr>
+      <tr style="border-bottom:1px solid #1d2f23;">
+        <td style="padding:7px 8px;"><strong>LAG</strong></td>
+        <td style="padding:7px 8px; color:#bcd2c4;">רחב (~45% ידיים)</td>
+        <td style="padding:7px 8px; color:#bcd2c4;">גבוהה מאוד — מהמר, בלופ, לחץ מתמיד</td>
+        <td style="padding:7px 8px; color:#bcd2c4;">שחקנים מנוסים שרוצים לתרגל לחץ</td>
+      </tr>
+      <tr style="border-bottom:1px solid #1d2f23;">
+        <td style="padding:7px 8px;"><strong>TP</strong></td>
+        <td style="padding:7px 8px; color:#bcd2c4;">הדוק מאוד (~15%)</td>
+        <td style="padding:7px 8px; color:#bcd2c4;">נמוכה — מעדיף קול על רייז</td>
+        <td style="padding:7px 8px; color:#bcd2c4;">שחקנים זהירים שרוצים לשפר אגרסיביות</td>
+      </tr>
+      <tr>
+        <td style="padding:7px 8px;"><strong>LP</strong></td>
+        <td style="padding:7px 8px; color:#bcd2c4;">רחב (~50% ידיים)</td>
+        <td style="padding:7px 8px; color:#bcd2c4;">נמוכה — קול בקלות, מעט רייזים</td>
+        <td style="padding:7px 8px; color:#bcd2c4;">זיהוי נטייה לפסיביות רחבה</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3 style="margin-top:16px; font-size:14px; color:#e8c66b;">איך זה מופיע בניתוח — ה"Fit Note"</h3>
+  <p style="margin-top:6px">בסוף כל טקסט ניתוח תופיע הערת סגנון אישית:</p>
+
+  <div class="coaching-example" style="margin-top:8px">
+    <span class="label">כשהפעולה מתאימה לסגנון שלכם</span>
+    <div class="verdict-line good line">✅ Good raise (A) — AKo, top 4%. <span style="color:#bcd2c4;">Fits your LAG style.</span></div>
+  </div>
+
+  <div class="coaching-example">
+    <span class="label">כשפעלתם הדוק מדי ביחס לסגנון שלכם</span>
+    <div class="verdict-line good line">✅ Good fold (A) — 72o, bottom 1%. <span style="color:#f39b9b;">Tighter than your LAG style (LAG would call).</span></div>
+  </div>
+
+  <div class="coaching-example">
+    <span class="label">כשפעלתם רחב מדי ביחס לסגנון שלכם</span>
+    <div class="verdict-line tight line">❌ Too tight (B) — 71% vs 33% needed; raise. <span style="color:#f3c969;">Looser than your TP style (TP would fold).</span></div>
+  </div>
+
+  <div style="background:#1d2f23; border-radius:8px; padding:12px 14px; margin-top:14px;">
+    <p style="color:#9be59b; margin:0 0 6px;"><strong>💡 כיצד להשתמש נכון:</strong></p>
+    <ol style="padding-right:18px;">
+      <li style="margin-bottom:5px;">התחילו עם <strong>TAG</strong> — זו ברירת המחדל ונקודת הייחוס של כל הניתוח.</li>
+      <li style="margin-bottom:5px;">שחקו 20-30 ידיים ובדקו מה הסטטיסטיקות אומרות (Optimal %, A/B/C/F).</li>
+      <li style="margin-bottom:5px;">אם אתם תמיד "Too tight" — נסו <strong>LAG</strong> ובדקו אם הניתוח אומר "Fits your style" יותר.</li>
+      <li>הFit Note לא משנה את הציון (A/B/C/F) — הציון תמיד מול ה-TAG האובייקטיבי. הוא רק מספר לכם אם הפעולה עולה בקנה אחד עם הסגנון שהגדרתם.</li>
+    </ol>
+  </div>
+</div>
+
+<h3>לחיצה על יריב — מטריצת טווח</h3>
+<div class="card-box">
+  <p>לחצו על כל יריב בשולחן כדי לראות את <strong>מטריצת 169 הידיים</strong> שלו בפריפלופ — אדום=רייז, כחול=קול, אפור=פולד.</p>
+</div>
+
+<h3>בחירת השפה</h3>
+<div class="card-box">
+  <p>מתג <strong>EN / עב</strong> בחלק העליון — מחליף את כל הניתוח לעברית (כולל RTL מלא בפאנל התחתון).</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<hr />
+<h2>חלק ב׳ — כיצד לקרוא את הניתוח</h2>
+
+<p>הפאנל התחתון מופיע <strong>מיד אחרי כל פעולה</strong>. הוא בנוי מ-5 שכבות:</p>
+
+<!-- ── VERDICT ── -->
+<h3>1. פס משוב מהיר (הבאנר)</h3>
+<div class="card-box">
+  <p>שורה אחת בגודל מדיום — הדבר הראשון שרואים:</p>
+  <div class="coaching-example">
+    <span class="label">דוגמה — פריפלופ נכון</span>
+    <div class="verdict-line good">✅ Good raise (A) — AKo — top 4%.</div>
+  </div>
+  <div class="coaching-example">
+    <span class="label">דוגמה — החלטה שגויה</span>
+    <div class="verdict-line tight">❌ Too tight (C) — 67% vs 28% needed; raise.</div>
+  </div>
+  <ul style="margin-top:12px">
+    <li><span class="verdict good">✅ Good</span> — פעולה נכונה</li>
+    <li><span class="verdict loose">❌ Too loose</span> — פעלתם אגרסיבית מדי</li>
+    <li><span class="verdict tight">❌ Too tight</span> — פעלתם פסיבי/הדוק מדי</li>
+  </ul>
+  <p style="margin-top:10px">הציון בסוגריים: <span class="grade A">A</span> מושלם · <span class="grade B">B</span> טעות קלה · <span class="grade C">C</span> טעות משמעותית · <span class="grade F">F</span> שגיאה חמורה</p>
+  <p>המספר (67% vs 28%) = האקוויטי שלכם מול הטווח של היריב VS המחיר שהבט מניח.</p>
+</div>
+
+<!-- ── TEXT ── -->
+<h3>2. טקסט הסבר מלא</h3>
+<div class="card-box">
+  <p>שורה ארוכה יותר שמסבירה <em>מה</em> עשיתם ו<em>מה</em> היה עדיף:</p>
+  <div class="coaching-example">
+    <div class="verdict-line tight line">❌ Too tight — On Kd7c2s you hold a flush (~9.4/10) — you have ~94% vs the CO TAG's betting range; the bet lays ~29%. Best line: raise — you're well ahead of their range — this is a value raise.</div>
+  </div>
+  <ul style="margin-top:10px">
+    <li><strong>שם היד</strong> (flush, top pair, set…) + ציון 0-10</li>
+    <li><strong>האקוויטי שלכם</strong> מול טווח היריב בהסתמך על הלוח</li>
+    <li><strong>המחיר שהבט מניח</strong> (pot odds) — הגבול שמתחתיו לא כדאי להמשיך</li>
+    <li><strong>Best line</strong> — מה היה נכון לעשות ולמה</li>
+  </ul>
+</div>
+
+<!-- ── ANALYSIS ── -->
+<h3>3. שורת אנליזה</h3>
+<div class="card-box">
+  <p>מידע עמוק על הספוט הספציפי:</p>
+  <div class="coaching-example">
+    <div class="analysis-line line">Spot: dry, K-high. Your hand: value (~84th percentile of your range). They rep wide / airy (c-bet, 67% pot (standard) — raiser bets wide here). [pot odds] [c-bet]</div>
+  </div>
+
+  <ul style="margin-top:10px">
+    <li>
+      <strong>Spot: טקסטורת הלוח</strong> — dry / semi-wet / wet / monotone + גובה (K-high, A-high, low)
+    </li>
+    <li>
+      <strong>Your hand: תפקיד היד</strong>
+      <ul>
+        <li>value (strong) — יד ערך חזקה (set, flush, full house…)</li>
+        <li>value — ערך בינוני (top pair, two pair…)</li>
+        <li>bluff-catcher — יד לתפוס בלופים (second pair, underpair…)</li>
+        <li>draw (semi-bluff) — דרואו (flush draw, open-ender)</li>
+        <li>air — יד חלשה ללא הצדקה</li>
+      </ul>
+    </li>
+    <li>
+      <strong>אחוזון הטווח</strong> — "84th percentile of your range" אומר שהיד שלכם חזקה מ-84% מהידיים שהייתם משחקים בספוט הזה.
+    </li>
+    <li>
+      <strong>They rep</strong> — מה היריב מייצג לפי טווח ההימור שלו:
+      <ul>
+        <li>value-heavy (top pair+) — בעיקר ידיים חזקות</li>
+        <li>polarized (value + draws) — ידיים חזקות + דרואים</li>
+        <li>wide / airy — טווח רחב הכולל הרבה אוויר</li>
+        <li>a mixed range — מעורב</li>
+      </ul>
+    </li>
+    <li>
+      <strong>C-bet / Donk bet + גודל הבט</strong>
+      <ul>
+        <li><strong>c-bet, 67% pot (standard)</strong> — המעלה הפריפלופ מהמר על הפלופ. הטווח שלו רחב ומכיל הרבה בלופים.</li>
+        <li><strong>donk bet, 33% pot (small probe)</strong> — לא-המעלה מהמר לתוך המעלה. הטווח שלו הדוק יותר — בדרך כלל ידיים חזקות.</li>
+        <li>גדלי בט: small probe (≤25%) · less than half-pot (≤45%) · half-pot (≤60%) · standard (≤80%) · large (≤100%) · overbet (>100%)</li>
+      </ul>
+    </li>
+    <li>
+      <strong>תגיות [concept tags]</strong>
+      <div style="margin-top:6px">
+        <span class="tag">pot odds</span> — יחס קופה: מחירים לקביעה אם כדאי לקול
+        <span class="tag">c-bet</span> — המעלה הפריפלופ מהמרת על הפוסטפלופ
+        <span class="tag">donk bet</span> — לא-המעלה מהמרת לתוך המעלה
+        <span class="tag">protection</span> — הימור להגנה מפני דרואים של היריב
+        <span class="tag">bluff-catch</span> — קול לתפיסת בלוף
+        <span class="tag">draw</span> — יד עם דרואו משמעותי
+        <span class="tag">value bet</span> — הימור ערך
+        <span class="tag">blockers</span> — קלפים שחוסמים ידיים חזקות של היריב
+        <span class="tag">first in</span> — פתיחת קופה ראשונים
+        <span class="tag">3-bet vs raiser</span> — רייז מעל המעלה
+      </div>
+    </li>
+  </ul>
+</div>
+
+<!-- ── EV ── -->
+<h3>4. שורת EV — הסבר מתמטי</h3>
+<div class="card-box">
+  <p>מופיעה רק כשיש הימור מולכם — מסבירה את חישוב ה-EV של רייז ואת ה-MDF:</p>
+  <div class="coaching-example">
+    <div class="ev-line line">Raise EV ≈ fold branch (CO TAG folds ~50%) + showdown branch (~67% when called). MDF ~60% — defend that share of your range; folding the bottom is fine.</div>
+  </div>
+  <ul style="margin-top:10px">
+    <li>
+      <strong>Raise EV</strong> — רייז מרוויח משני ענפים:
+      <ol>
+        <li><strong>Fold branch</strong> — כמה אחוז מהיריב יקפל (רווח מיידי)</li>
+        <li><strong>Showdown branch</strong> — האקוויטי שלכם כשהיריב קורא</li>
+      </ol>
+    </li>
+    <li>
+      <strong>MDF (Minimum Defense Frequency)</strong> — כמה אחוז מהטווח חייבים להגן (קול או רייז) כדי לא לתת ליריב רווח אוטומטי מהבלוף שלו. אפשר לפולד את התחתית.
+      <ul>
+        <li>MDF = 1 − (גודל הבט / קופה אחרי הבט)</li>
+        <li>בט של חצי קופה → MDF ≈ 67%</li>
+        <li>בט של קופה שלמה → MDF = 50%</li>
+      </ul>
+    </li>
+  </ul>
+</div>
+
+<!-- ── RULE ── -->
+<h3>5. כלל הפוקר</h3>
+<div class="card-box">
+  <p>שורה סופית שמסכמת את העיקרון התיאורטי הרלוונטי לספוט:</p>
+  <div class="coaching-example">
+    <div class="rule-line line">💡 Raise your strong hands vs a betting range — get called by worse and protect your equity.</div>
+  </div>
+  <p style="margin-top:8px">זו ה"לקח" שצריך לזכור מהיד הזו.</p>
+</div>
+
+<!-- ── GRADE GUIDE ── -->
+<h2>טבלת ציונים</h2>
+<div class="card-box">
+  <table style="width:100%; border-collapse:collapse; font-size:14px;">
+    <thead>
+      <tr style="color:var(--gold); border-bottom:1px solid var(--border);">
+        <th style="text-align:right; padding:6px 8px;">ציון</th>
+        <th style="text-align:right; padding:6px 8px;">משמעות</th>
+        <th style="text-align:right; padding:6px 8px;">פאספ</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid var(--bg3)">
+        <td style="padding:8px"><span class="grade A">A</span></td>
+        <td style="padding:8px; color:var(--muted)">פעולה מושלמת — בדיוק מה שהמאמן ממליץ</td>
+        <td style="padding:8px; color:var(--green)">Optimal ✓</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--bg3)">
+        <td style="padding:8px"><span class="grade B">B</span></td>
+        <td style="padding:8px; color:var(--muted)">צעד אחד מהנכון (פולד במקום קול, קול במקום רייז)</td>
+        <td style="padding:8px; color:var(--yellow)">טעות קלה</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--bg3)">
+        <td style="padding:8px"><span class="grade C">C</span></td>
+        <td style="padding:8px; color:var(--muted)">שני צעדים מהנכון (פולד במקום רייז)</td>
+        <td style="padding:8px; color:var(--yellow)">טעות משמעותית</td>
+      </tr>
+      <tr>
+        <td style="padding:8px"><span class="grade F">F</span></td>
+        <td style="padding:8px; color:var(--muted)">שלושה צעדים — טעות חמורה (פולד יד חזקה מאוד, רייז יד חלשה מאוד)</td>
+        <td style="padding:8px; color:var(--red)">שגיאה חמורה</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ── TIPS ── -->
+<h2>טיפים מהירים</h2>
+<div class="card-box">
+  <ul>
+    <li>כשה-MDF גבוה (67%+) ותקפלו יותר מ-33% — אתם מפסידים EV. נסו להגן יותר.</li>
+    <li>כשרואים <strong>c-bet של LAG</strong> בגודל קטן (33% pot) — הטווח שלו רחב מאוד. שקלו רייז עם ידיים טובות.</li>
+    <li>כשרואים <strong>donk bet</strong> — היריב הלא-אגרסיבי מהמר לתוכם. הטווח הדוק יותר — שימו לב.</li>
+    <li>LP ו-TP שמעלים כשהם מול הימור = כמעט בטוח מונסטר. אפשר לפולד ידיים בינוניות.</li>
+    <li>האחוזון של הטווח (84th percentile) נמדד רק מתוך הידיים שהייתם משחקים בספוט — לא מכל 169 הידיים.</li>
+    <li>הציון הכולל (Optimal %) מוצג בתחתית הפאנל — מטרה: 70%+.</li>
+  </ul>
+</div>
+
+<hr />
+<p style="text-align:center; font-size:12px; color:#4a6b55; margin-top:24px;">
+  NLH Trainer V1.15 · <a href="https://galdarom.github.io/nlh-poker-trainer/" style="color:#5fd089;">galdarom.github.io/nlh-poker-trainer</a>
+</p>
+
+</body>
+</html>
