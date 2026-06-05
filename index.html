@@ -153,7 +153,7 @@
     <span id="langSel"></span>
   </div>
   <div id="summaryBox" class="summarybox"></div>
-  <div class="version">V1.14</div>
+  <div class="version">V1.15</div>
 
   <script>
 // UMD-style module: works in Node (module.exports) and browser (window.Engine).
@@ -2625,6 +2625,7 @@
         smallBlind: SB, bigBlind: BB, stacks });
       hero = hand._debug.hands()[HERO_SEAT];
       revealed = new Set(); settled = false;
+      lastDecision = null;
       setFeedback('', ''); document.getElementById('result').textContent = '';
       closeOverlay();
       render();
