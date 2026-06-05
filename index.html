@@ -153,7 +153,7 @@
     <span id="langSel"></span>
   </div>
   <div id="summaryBox" class="summarybox"></div>
-  <div class="version">V1.11</div>
+  <div class="version">V1.12</div>
 
   <script>
 // UMD-style module: works in Node (module.exports) and browser (window.Engine).
@@ -1900,11 +1900,16 @@
     return action;
   }
 
-  const WHY_FACING = {
-    raise: "you're ahead of their range — value and protection",
-    call:  'you have the equity for the price',
-    fold:  'behind their range without the price',
-  };
+  function an(w) { return /^[aeiou]/i.test(w) ? 'an ' + w : 'a ' + w; }
+  function whyFacing(rec, boardLen) {
+    if (rec === 'raise') {
+      if (!boardLen) return "you're ahead of their range — raise for value and take initiative";
+      return boardLen >= 5
+        ? "you're well ahead of their range — this is a value raise"
+        : "you're ahead of their range — raise for value and deny their draws";
+    }
+    return rec === 'call' ? 'you have the equity for the price' : 'behind their range without the price';
+  }
   const WHY_NOBET = {
     bet:   'strong enough to value-bet',
     check: 'too weak to bet — keep the pot small',
@@ -1915,7 +1920,7 @@
     fold:  'not strong enough to continue',
   };
   const RULE_FACING = {
-    raise: 'Raise your strong made hands vs a betting range — get called by worse.',
+    raise: 'Raise your strong hands vs a betting range — get called by worse and protect your equity.',
     call:  'Call when your equity beats the price the bet lays.',
     fold:  "No price + behind = fold; don't pay off light.",
   };
@@ -1926,7 +1931,7 @@
   const RULE_PREFLOP = {
     raise: 'Raise your premiums and take initiative with strong hands.',
     call:  'Continue with hands that have odds/playability, not a raise.',
-    fold:  'Fold dominated hands, especially vs a tight raiser.',
+    fold:  'Fold weak hands before the flop — only enter pots with playable holdings.',
   };
   function verdictLabel(verdict, heroAction) {
     if (verdict === 'good') return `✅ Good ${heroAction}`;
@@ -1992,14 +1997,14 @@
     const wet = t && (t.connected || t.monotone || t.twoTone);
     if (o.facingBet) tags.push('pot odds');
     if (o.role === 'bluff-catcher' && o.facingBet) tags.push('bluff-catch');
-    if ((o.rec === 'bet' || o.rec === 'raise') && wet) tags.push('protection');
+    if ((o.rec === 'bet' || o.rec === 'raise') && wet && (!o.board || o.board.length < 5)) tags.push('protection');
     if (o.draws && (o.draws.flushDraw || o.draws.openEnded || o.draws.gutshot)) tags.push('draw');
     if (o.board && o.board.length) {
       const top = Math.max.apply(null, o.board.map(c => Engine.rankValue(c.rank)));
       if (o.heroCards.some(c => Engine.rankValue(c.rank) === top)) tags.push('blockers');
     }
     if (!o.facingBet && o.board && o.board.length) tags.push(o.rec === 'bet' ? 'value bet' : 'pot control');
-    if (o.preflop) tags.push(o.openingPre ? 'open' : (o.rec === 'raise' ? '3-bet' : 'pot odds'));
+    if (o.preflop) tags.push(o.openingPre ? 'first in' : (o.rec === 'raise' ? '3-bet vs raiser' : 'pot odds'));
     const seen = {}; const uniq = tags.filter(x => (seen[x] ? false : (seen[x] = true)));
     return uniq.slice(0, 4);
   }
@@ -2022,7 +2027,7 @@
     fold: 'לא חזק מספיק להמשיך',
   };
   const HE_RULE_FACING = {
-    raise: 'העלה ידיים חזקות מול טווח שמהמר — תקבל קול מידיים גרועות יותר.',
+    raise: 'העלה ידיים חזקות מול טווח שמהמר — קבל קול מידיים גרועות יותר והגן על האקוויטי שלך.',
     call: 'עשה קול כשהאקוויטי שלך עולה על המחיר שההימור נותן.',
     fold: 'אין מחיר + מאחור = פולד; אל תשלם עם יד חלשה.',
   };
@@ -2033,7 +2038,7 @@
   const HE_RULE_PREFLOP = {
     raise: 'העלה עם ידיים מובילות וקח יוזמה עם ידיים חזקות.',
     call: 'המשך עם ידיים בעלות סיכויים/בר-שחיקה, לא בהעלאה.',
-    fold: 'זרוק ידיים נשלטות, במיוחד מול מעלה הדוק.',
+    fold: 'זרוק ידיים חלשות לפני הפלופ — כנס לקופות רק עם ידיים בנות-שחיקה.',
   };
   const HE_BOARD = {
     monotone: 'חד-צבעי', wet: 'רטוב', connected: 'מחובר', 'two-tone': 'דו-צבעי', dry: 'יבש',
@@ -2049,7 +2054,8 @@
   };
   const HE_TAG = {
     'pot odds': 'יחס קופה', protection: 'הגנה', 'bluff-catch': 'תפיסת בלוף', draw: 'דרואו',
-    blockers: 'בלוקרים', 'value bet': 'הימור ערך', 'pot control': 'שליטה בקופה', '3-bet': '3-בט', open: 'פתיחה',
+    blockers: 'בלוקרים', 'value bet': 'הימור ערך', 'pot control': 'שליטה בקופה',
+    '3-bet': '3-בט', '3-bet vs raiser': '3-בט מול מעלה', open: 'פתיחה', 'first in': 'ראשון לפעול',
   };
   const HE_MADE = {
     'straight flush': 'רצף צבע', quads: 'רביעייה', 'full house': 'פול האוס', flush: 'צבע', straight: 'רצף',
@@ -2070,14 +2076,26 @@
     let core;
     if (m.spot === 'facing') {
       const where = m.boardCodes ? `על ${m.boardCodes} ` : '';
-      const multi = m.multiwayExtra > 0 ? ` (×${(1 + 0.10 * m.multiwayExtra).toFixed(1)} מרובה)` : '';
-      core = `${where}יש לך ~${m.equityPct}% מול טווח ההימור של ה-${m.aggressor.position} ${m.aggressor.type}; ההימור נותן ~${m.neededPct}%${multi}`;
+      const multi = m.multiwayExtra > 0 ? ` (מרובה: יחס קופה מותאם ל-${m.multiwayExtra} שחקן${m.multiwayExtra > 1 ? 'ים' : ''} נוספים)` : '';
+      const handStr = m.made ? `אתה מחזיק ${HE_MADE[m.made] || m.made} — ` : '';
+      core = `${where}${handStr}יש לך ~${m.equityPct}% מול טווח ההימור של ה-${m.aggressor.position} ${m.aggressor.type}; ההימור נותן ~${m.neededPct}%${multi}`;
     } else if (m.spot === 'noBet') {
-      core = `אין הימור אליך — ${HE_MADE[m.made] || m.made} (~${m.score10}/10)`;
+      core = `בדיקה אליך — ${HE_MADE[m.made] || m.made} (~${m.score10}/10)`;
     } else {
       core = `מצב פתיחה (${m.preKey})`;
     }
-    const why = (m.spot === 'facing' ? HE_WHY_FACING : m.spot === 'noBet' ? HE_WHY_NOBET : HE_WHY_PREFLOP)[m.rec];
+    let why;
+    if (m.spot === 'facing') {
+      if (m.rec === 'raise') {
+        why = !m.boardLen ? 'אתה לפני הטווח שלהם — רייז לערך וקיחת יוזמה'
+          : m.boardLen >= 5 ? 'אתה מובהק לפני הטווח שלהם — זה רייז ערך'
+          : 'אתה לפני הטווח שלהם — רייז לערך ולשלילת דרואים';
+      } else {
+        why = HE_WHY_FACING[m.rec];
+      }
+    } else {
+      why = (m.spot === 'noBet' ? HE_WHY_NOBET : HE_WHY_PREFLOP)[m.rec];
+    }
     const rule = (m.spot === 'facing' ? HE_RULE_FACING : m.spot === 'noBet' ? HE_RULE_NOBET : HE_RULE_PREFLOP)[m.rec];
     const label = heVerdictLabel(m.verdict, m.heroAction);
     let text = m.verdict === 'good'
@@ -2114,6 +2132,9 @@
       short = m.verdict === 'good'
         ? `${label}${gradeTag} — ${m.equityPct}% מול מחיר ${m.neededPct}%.`
         : `${label}${gradeTag} — ${m.equityPct}% מול ${m.neededPct}% נדרש; ${heAct(m.rec)}.`;
+    } else if (m.verdict === 'good' && m.shortExtra) {
+      const heExtra = m.spot === 'noBet' && m.made ? `${HE_MADE[m.made] || m.made} (${m.score10}/10)` : m.shortExtra;
+      short = `${label}${gradeTag} — ${heExtra}.`;
     } else {
       short = m.verdict === 'good' ? `${label}${gradeTag}.` : `${label}${gradeTag} — ${heAct(m.rec)} עדיף.`;
     }
@@ -2132,6 +2153,9 @@
     const meta = { heroAction, hasBoard: board.length > 0,
       aggressor: aggressor ? { position: aggressor.position, type: aggressor.type } : null };
 
+    const ps = board.length ? Postflop.postflopScore(heroCards, board) : null;
+    let raw = null; // set in opening branch, used for short enrichment
+    let shortExtra = ''; // appended to good verdicts when no equity data available
     let rec, core, why, rule;
     let equityPct = null, neededPct = null; // for the cost clause (facing-a-bet only)
     let villainBettingRange = null;         // reused by the spot analysis
@@ -2159,23 +2183,28 @@
       else rec = 'fold';
       equityPct = pctOf(equity); neededPct = pctOf(callBar);
       const where = board.length ? `On ${board.map(c => c.rank + c.suit).join('')} ` : '';
-      const multi = extra > 0 ? ` (×${(1 + 0.10 * extra).toFixed(1)} multiway)` : '';
-      core = `${where}you have ~${equityPct}% vs the ${aggressor.position} ${aggressor.type}'s betting range; the bet lays ~${neededPct}%${multi}`;
-      why = WHY_FACING[rec]; rule = RULE_FACING[rec];
+      const multi = extra > 0 ? ` (multiway: equity bar raised for ${extra} more player${extra > 1 ? 's' : ''} to act)` : '';
+      const handStr = ps ? `you hold ${an(ps.made)} (~${(ps.score100 / 10).toFixed(1)}/10) — ` : '';
+      core = `${where}${handStr}you have ~${equityPct}% vs the ${aggressor.position} ${aggressor.type}'s betting range; the bet lays ~${neededPct}%${multi}`;
+      why = whyFacing(rec, board.length); rule = RULE_FACING[rec];
       meta.multiwayExtra = extra;
       meta.boardCodes = board.length ? board.map(c => c.rank + c.suit).join('') : '';
+      meta.made = ps ? ps.made : null; meta.score10 = ps ? (ps.score100 / 10).toFixed(1) : null;
     } else if (board.length) {
-      const ps = Postflop.postflopScore(heroCards, board);
+      // ps already computed above
       rec = ps.score100 >= 55 ? 'bet' : 'check';
-      core = `no bet to you — ${ps.made} (~${(ps.score100 / 10).toFixed(1)}/10)`;
+      core = `checked to you — ${ps.made} (~${(ps.score100 / 10).toFixed(1)}/10)`;
       why = WHY_NOBET[rec]; rule = RULE_NOBET[rec];
       meta.made = ps.made; meta.score10 = (ps.score100 / 10).toFixed(1);
+      shortExtra = `${ps.made} (${(ps.score100 / 10).toFixed(1)}/10)`;
     } else {
-      const raw = Engine.rawScore(heroCards[0], heroCards[1]);
+      raw = Engine.rawScore(heroCards[0], heroCards[1]);
       rec = recommendAction(preflopE(heroCards, ts), ts.raisesSoFar || 0).action;
       core = `opening spot (${raw.key})`;
       why = WHY_PREFLOP[rec]; rule = RULE_PREFLOP[rec];
       meta.preKey = raw.key;
+      const openPrPct = Math.round(100 * (169 - raw.rank + 1) / 169);
+      shortExtra = `${raw.key} — ${openPrPct >= 70 ? 'top ' + (100 - openPrPct) + '%' : openPrPct + 'th %ile'}`;
     }
 
     const verdict = verdictFor(heroAction, rec);
@@ -2197,7 +2226,7 @@
     const heroPos = heroPositionOf(ts);
     let analysis;
     if (board.length) {
-      const ps = Postflop.postflopScore(heroCards, board);
+      // ps already computed above
       const role = handRole(ps);
       const pct = rangePercentile(heroCards, board, heroType, heroPos, { raisesBefore: ts.raisesSoFar || 0 });
       const tagKeys = conceptTags({ facingBet: !!aggressor, board, rec, role, draws: ps.draws, heroCards, preflop: false });
@@ -2209,17 +2238,17 @@
         meta.reps = reps;
         analysis = `Spot: ${boardRead(board)}. Your hand: ${role} (~${pct}%ile of your range). They rep ${reps}. ${tags}`;
       } else {
-        analysis = `Spot: ${boardRead(board)}. Your hand: ${role} (~${pct}%ile). ${tags}`;
+        analysis = `Spot: ${boardRead(board)}. Your hand: ${role} (~${pct}%ile of your range). ${tags}`;
       }
     } else {
-      const raw = Engine.rawScore(heroCards[0], heroCards[1]);
-      const prePct = Math.round(100 * (169 - raw.rank + 1) / 169);
+      const prePct = raw ? Math.round(100 * (169 - raw.rank + 1) / 169) : 50;
+      const rawKey = raw ? raw.key : Engine.rawScore(heroCards[0], heroCards[1]).key;
       const tagKeys = conceptTags({ facingBet: !!aggressor, board, rec, role: null, draws: null, heroCards, preflop: true, openingPre: !aggressor });
       const tags = tagStr(tagKeys);
-      meta.preKey = raw.key; meta.prePct = prePct; meta.tagKeys = tagKeys;
+      meta.preKey = rawKey; meta.prePct = prePct; meta.tagKeys = tagKeys;
       analysis = aggressor
-        ? `Spot: ${raw.key} — ~${prePct}%ile of hands. vs the ${aggressor.position} ${aggressor.type}'s opening range. ${tags}`
-        : `Spot: ${raw.key} — ~${prePct}%ile of hands. ${tags}`;
+        ? `Spot: ${rawKey} — ~${prePct}%ile of hands. vs the ${aggressor.position} ${aggressor.type}'s opening range. ${tags}`
+        : `Spot: ${rawKey} — ~${prePct}%ile of hands. ${tags}`;
     }
 
     // ---- fold-equity + MDF explainer (facing a bet only; coaching estimates) ----
@@ -2240,18 +2269,21 @@
       if (parts.length) ev = parts.join('. ') + '.';
     }
 
-    // Concise live line: verdict + grade + the decisive number.
+    // Concise live line: verdict + grade + the decisive number (or hand info for opening/no-bet).
     const gradeTag = ` (${grade})`;
     let short;
     if (equityPct != null) {
       short = verdict === 'good'
         ? `${verdictLabel(verdict, heroAction)}${gradeTag} — ${equityPct}% vs the ${neededPct}% price.`
         : `${verdictLabel(verdict, heroAction)}${gradeTag} — ${equityPct}% vs ${neededPct}% needed; ${rec}.`;
+    } else if (verdict === 'good' && shortExtra) {
+      short = `${verdictLabel(verdict, heroAction)}${gradeTag} — ${shortExtra}.`;
     } else {
       short = verdict === 'good'
         ? `${verdictLabel(verdict, heroAction)}${gradeTag}.`
         : `${verdictLabel(verdict, heroAction)}${gradeTag} — ${rec} was best.`;
     }
+    meta.shortExtra = shortExtra;
 
     if (heroType && PROFILES[heroType]) {
       const tier = board.length ? PF_TIER : TIER;
@@ -2269,6 +2301,7 @@
     meta.spot = aggressor ? 'facing' : (board.length ? 'noBet' : 'opening');
     meta.rec = rec; meta.verdict = verdict; meta.grade = grade;
     meta.equityPct = equityPct; meta.neededPct = neededPct;
+    meta.boardLen = board.length;
 
     const out = { verdict, text, rule, grade, optimal, short, analysis, ev };
     if (lang === 'he') Object.assign(out, renderHE(meta));
