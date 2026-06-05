@@ -153,7 +153,7 @@
     <span id="langSel"></span>
   </div>
   <div id="summaryBox" class="summarybox"></div>
-  <div class="version">V1.10</div>
+  <div class="version">V1.11</div>
 
   <script>
 // UMD-style module: works in Node (module.exports) and browser (window.Engine).
@@ -556,11 +556,11 @@
   // Thresholds are on effective strength E (1-10). `call` in the OPEN spot means a limp.
   const PROFILES = {
     LP:  { label: 'LP',  name: 'Loose-Passive',    open: { raise: 9, call: 4 },  vsRaise: { raise: 10, call: 5 },
-           postflop: { bet: 7, call: 3, raise: 9 } },
+           postflop: { bet: 7, call: 3, raise: 8 } },
     LAG: { label: 'LAG', name: 'Loose-Aggressive', open: { raise: 5, call: 4 },  vsRaise: { raise: 8,  call: 6 },
            postflop: { bet: 4, call: 4, raise: 6 } },
     TP:  { label: 'TP',  name: 'Tight-Passive',    open: { raise: 9, call: 6 },  vsRaise: { raise: 10, call: 8 },
-           postflop: { bet: 7, call: 5, raise: 9 } },
+           postflop: { bet: 7, call: 5, raise: 8 } },
     TAG: { label: 'TAG', name: 'Tight-Aggressive', open: { raise: 7, call: 99 }, vsRaise: { raise: 9,  call: 8 },
            postflop: { bet: 5, call: 5, raise: 8 } },
   };
@@ -571,11 +571,27 @@
   const IMPLIED_ODDS = { LP: 0.06, LAG: 0.05, TP: 0.02, TAG: 0.02 };
 
   // 3C: postflop bet/check frequencies. Base = has initiative (preflop aggressor), dry board.
+  // LP/TP monsters raised: passive players still value-bet their strong made hands.
   const BET_FREQ = {
-    TAG: { monster: 0.70, strong: 0.85, medium: 0.45, draw: 0.60, air: 0.35 },
-    LAG: { monster: 0.65, strong: 0.85, medium: 0.55, draw: 0.75, air: 0.60 },
-    TP:  { monster: 0.55, strong: 0.80, medium: 0.40, draw: 0.35, air: 0.08 },
-    LP:  { monster: 0.45, strong: 0.65, medium: 0.30, draw: 0.30, air: 0.06 },
+    TAG: { monster: 0.75, strong: 0.85, medium: 0.45, draw: 0.60, air: 0.35 },
+    LAG: { monster: 0.70, strong: 0.85, medium: 0.55, draw: 0.75, air: 0.60 },
+    TP:  { monster: 0.65, strong: 0.75, medium: 0.40, draw: 0.35, air: 0.08 },
+    LP:  { monster: 0.70, strong: 0.70, medium: 0.30, draw: 0.30, air: 0.06 },
+  };
+
+  // Position multiplier: in-position players bet more, out-of-position less.
+  const POS_MULT = {
+    BTN: 1.20, CO: 1.10, HJ: 1.05,
+    MP: 1.00, UTG: 1.00,
+    BB: 0.88, SB: 0.82,
+  };
+
+  // Street-dependent no-initiative scaling. Preflop-raiser advantage fades on later streets.
+  // Flop (3) values match the old hardcoded multipliers exactly (back-compat).
+  const INITIATIVE_SCALE = {
+    3: { air: 0.30, draw: 0.60, medium: 0.60, strong: 0.85, monster: 1.00 },
+    4: { air: 0.40, draw: 0.70, medium: 0.70, strong: 0.90, monster: 1.00 },
+    5: { air: 0.55, draw: 0.80, medium: 0.80, strong: 0.95, monster: 1.00 },
   };
 
   function classifyPostflop(ps) {
@@ -597,7 +613,7 @@
     monster:{ 3: 1.0, 4: 1.0,  5: 1.0 },
   };
 
-  function betFrequency(handClass, typeLabel, texture, hasInitiative, street) {
+  function betFrequency(handClass, typeLabel, texture, hasInitiative, street, position) {
     const row = BET_FREQ[typeLabel] || BET_FREQ.TAG;
     const f = { monster: row.monster, strong: row.strong, medium: row.medium, draw: row.draw, air: row.air };
     const wet = texture && (texture.connected || texture.twoTone || texture.monotone);
@@ -607,12 +623,16 @@
       f.strong = Math.min(f.strong + 0.05, 0.95);
     }
     if (!hasInitiative) {
-      f.air *= 0.30; f.draw *= 0.60; f.medium *= 0.60; f.strong *= 0.85;
+      const st = (street != null && INITIATIVE_SCALE[street]) ? street : 3;
+      const scale = INITIATIVE_SCALE[st];
+      f.air *= scale.air; f.draw *= scale.draw; f.medium *= scale.medium;
+      f.strong *= scale.strong; f.monster *= scale.monster;
     }
     const sm = STREET_MULT[handClass] && STREET_MULT[handClass][street];
     const v0 = f[handClass] != null ? f[handClass] : 0;
     const v = v0 * (sm != null ? sm : 1.0); // undefined street -> treat as flop (x1.0)
-    return Math.max(0, Math.min(0.97, v));
+    const posM = (position && POS_MULT[position]) ? POS_MULT[position] : 1.0;
+    return Math.max(0, Math.min(0.97, v * posM));
   }
 
   // 3B: balanced bet size as a fraction of pot — from board texture + street + type only
@@ -728,7 +748,7 @@
     if (context.raisesSoFar >= 3) return E >= 10 ? 'call' : 'fold'; // cap
     if (!context.facingBet) {
       if (context.betRoll != null && context.handClass != null) {
-        const freq = betFrequency(context.handClass, profile.label, context.texture, !!context.hasInitiative, context.street);
+        const freq = betFrequency(context.handClass, profile.label, context.texture, !!context.hasInitiative, context.street, context.position);
         return context.betRoll < freq ? 'bet' : 'check';
       }
       return E >= (t.bet + shift) ? 'bet' : 'check';
@@ -1647,6 +1667,7 @@
             ctx.betRoll = Ranges.hash(seed);
             ctx.hasInitiative = (config.preflopAggressor != null && seat === config.preflopAggressor);
             ctx.street = board.length;
+            ctx.position = p.position;
           }
           action = decide(strengthOf(seat, board), PROFILES[p.type], ctx);
         }
