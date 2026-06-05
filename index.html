@@ -153,7 +153,7 @@
     <span id="langSel"></span>
   </div>
   <div id="summaryBox" class="summarybox"></div>
-  <div class="version">V1.12</div>
+  <div class="version">V1.13</div>
 
   <script>
 // UMD-style module: works in Node (module.exports) and browser (window.Engine).
@@ -2004,6 +2004,8 @@
       if (o.heroCards.some(c => Engine.rankValue(c.rank) === top)) tags.push('blockers');
     }
     if (!o.facingBet && o.board && o.board.length) tags.push(o.rec === 'bet' ? 'value bet' : 'pot control');
+    if (o.isCbet) tags.push('c-bet');
+    else if (o.isDonk) tags.push('donk bet');
     if (o.preflop) tags.push(o.openingPre ? 'first in' : (o.rec === 'raise' ? '3-bet vs raiser' : 'pot odds'));
     const seen = {}; const uniq = tags.filter(x => (seen[x] ? false : (seen[x] = true)));
     return uniq.slice(0, 4);
@@ -2056,6 +2058,7 @@
     'pot odds': 'יחס קופה', protection: 'הגנה', 'bluff-catch': 'תפיסת בלוף', draw: 'דרואו',
     blockers: 'בלוקרים', 'value bet': 'הימור ערך', 'pot control': 'שליטה בקופה',
     '3-bet': '3-בט', '3-bet vs raiser': '3-בט מול מעלה', open: 'פתיחה', 'first in': 'ראשון לפעול',
+    'c-bet': 'הימור-המשך', 'donk bet': 'דונק-בט',
   };
   const HE_MADE = {
     'straight flush': 'רצף צבע', quads: 'רביעייה', 'full house': 'פול האוס', flush: 'צבע', straight: 'רצף',
@@ -2115,8 +2118,10 @@
         : `מצב: ${m.preKey} — ~${m.prePct} אחוזון מהידיים. ${heTags(m.tagKeys)}`;
     } else {
       const head = `מצב: ${heBoardRead(m.boardReadEN)}. היד שלך: ${HE_ROLE[m.role] || m.role}`;
+      const heBetNote = m.isCbet ? ' (הימור-המשך — המעלה מהמר על טווח רחב)'
+        : m.isDonk ? ' (דונק-בט — לא-תוקפן, טווח הדוק יותר)' : '';
       analysis = m.aggressor
-        ? `${head} (~${m.pct} אחוזון בטווח שלך). הם מייצגים ${HE_REPS[m.reps] || m.reps}. ${heTags(m.tagKeys)}`
+        ? `${head} (~${m.pct} אחוזון בטווח שלך). הם מייצגים ${HE_REPS[m.reps] || m.reps}${heBetNote}. ${heTags(m.tagKeys)}`
         : `${head} (~${m.pct} אחוזון). ${heTags(m.tagKeys)}`;
     }
     let ev = null;
@@ -2149,9 +2154,14 @@
     const toCall = Math.max(0, (ts.currentBet || 0) - (hero.committed || 0));
     const activeOpps = ts.players.filter(p => p.seat !== ts.heroSeat && p.status === 'active').length;
     const aggressor = toCall > 0 ? findAggressor(ts) : null;
+    // C-bet: preflop raiser bets the flop/turn/river (wide range, includes many bluffs).
+    // Donk: non-aggressor bets into the preflop raiser (value-heavy range, more cautious).
+    const isCbet = !!(board.length && aggressor && ts.preflopAggressor != null && aggressor.seat === ts.preflopAggressor);
+    const isDonk  = !!(board.length && aggressor && ts.preflopAggressor != null && aggressor.seat !== ts.preflopAggressor);
     // meta: raw values captured during the (unchanged) English pass, for Hebrew rendering.
     const meta = { heroAction, hasBoard: board.length > 0,
-      aggressor: aggressor ? { position: aggressor.position, type: aggressor.type } : null };
+      aggressor: aggressor ? { position: aggressor.position, type: aggressor.type } : null,
+      isCbet, isDonk };
 
     const ps = board.length ? Postflop.postflopScore(heroCards, board) : null;
     let raw = null; // set in opening branch, used for short enrichment
@@ -2229,14 +2239,16 @@
       // ps already computed above
       const role = handRole(ps);
       const pct = rangePercentile(heroCards, board, heroType, heroPos, { raisesBefore: ts.raisesSoFar || 0 });
-      const tagKeys = conceptTags({ facingBet: !!aggressor, board, rec, role, draws: ps.draws, heroCards, preflop: false });
+      const tagKeys = conceptTags({ facingBet: !!aggressor, board, rec, role, draws: ps.draws, heroCards, preflop: false, isCbet, isDonk });
       const tags = tagStr(tagKeys);
       meta.boardReadEN = boardRead(board); meta.role = role; meta.pct = pct; meta.tagKeys = tagKeys;
       if (aggressor) {
         const used = new Set(board.map(c => c.rank + c.suit));
         const reps = villainReps(villainBettingRange, board, used);
         meta.reps = reps;
-        analysis = `Spot: ${boardRead(board)}. Your hand: ${role} (~${pct}%ile of your range). They rep ${reps}. ${tags}`;
+        const betTypeNote = isCbet ? ' (c-bet — raiser bets wide here)'
+          : isDonk ? ' (donk bet — non-aggressor, expect a tighter range)' : '';
+        analysis = `Spot: ${boardRead(board)}. Your hand: ${role} (~${pct}%ile of your range). They rep ${reps}${betTypeNote}. ${tags}`;
       } else {
         analysis = `Spot: ${boardRead(board)}. Your hand: ${role} (~${pct}%ile of your range). ${tags}`;
       }
@@ -2530,6 +2542,7 @@
         return {
           street: streetName(), board: board.slice(), pot: st.pot,
           currentBet: st.currentBet, raisesSoFar: st.raisesSoFar,
+          preflopAggressor: preflopAggressor,
           awaitingHero: !terminal && round.awaitingHero(),
           toAct: st.toAct, result,
           players: seats.map(s => {
