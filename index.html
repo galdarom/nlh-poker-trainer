@@ -19,7 +19,7 @@
     border:10px solid #5a3a1a; border-radius:210px; box-shadow:0 0 40px rgba(0,0,0,.5) inset; }
   .center { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); text-align:center; }
   .street { font-size:12px; color:#cdeccd; letter-spacing:1px; text-transform:uppercase; }
-  .pot { font-size:18px; color:#fff; margin:4px 0; font-weight:700; text-shadow:0 1px 3px #000; }
+  .pot { font-size:22px; color:#fff; margin:4px 0; font-weight:700; text-shadow:0 1px 3px #000; }
   .pot .tocall { font-size:12px; color:#ffd9a0; font-weight:600; }
   /* chips a player has wagered this street, shown in front of them toward the pot */
   .betchip { position:absolute; transform:translate(-50%,-50%); z-index:6; white-space:nowrap;
@@ -42,13 +42,23 @@
     box-shadow:0 1px 3px rgba(0,0,0,.4); }
   .card.red { color:#c0202a; }
   .card.back { background:linear-gradient(135deg,#274b8f,#16294f); color:transparent; }
+  /* Community (board) cards are 25% larger than seat cards for readability. */
+  .board .card { width:38px; height:54px; font-size:20px; }
   .badge { margin-top:3px; min-height:15px; }
   .score { font-size:11px; border-radius:4px; padding:1px 5px; }
   .score.live { background:var(--gold); color:#222; font-weight:700; }
   .score.read { background:#23415c; color:#cfe6ff; }
   .score.true { background:#5c2342; color:#ffd6ec; }
   .score.folded { background:#444; color:#ccc; }
-  .act { font-size:11px; color:#ffe; margin-top:2px; text-transform:capitalize; }
+  /* Each player's last action — a prominent, color-coded pill (raise/call/fold etc.). */
+  .act { font-size:13px; font-weight:800; color:#fff; margin-top:4px; text-transform:uppercase;
+    letter-spacing:.3px; display:inline-block; padding:2px 9px; border-radius:11px;
+    background:rgba(0,0,0,.4); box-shadow:0 1px 4px rgba(0,0,0,.45); }
+  .act.fold  { background:#7a2b3c; }
+  .act.check { background:#3a5a45; }
+  .act.call  { background:#2f5fa8; }
+  .act.raise { background:#d8643c; }
+  .act.allin { background:#a8324a; box-shadow:0 0 9px #ff7b7b; }
   .controls { text-align:center; margin:8px 0; min-height:42px; }
   button { background:var(--gold); color:#222; border:none; padding:9px 14px; font-size:14px;
     font-weight:700; border-radius:8px; cursor:pointer; margin:0 3px; }
@@ -147,6 +157,7 @@
     .matrixbox h3 { font-size:12px; }
     .matrixbox .legend, .matrixbox .legend2 { font-size:10px; }
     .card { width:40px; height:57px; font-size:21px; } /* 33% bigger on mobile for readability */
+    .board .card { width:50px; height:71px; font-size:26px; } /* community cards +25% on mobile too */
     /* Hero's own hole cards: +50% over the others so you can read your hand at a glance. */
     .seat.hero { width:150px; }
     .seat.hero .card { width:60px; height:85px; font-size:31px; }
@@ -156,7 +167,7 @@
     .seat .stack { font-size:16px; }
     .seat .rebuy { font-size:15px; }
     .score { font-size:16px; }
-    .act { font-size:16px; }
+    .act { font-size:17px; padding:2px 11px; }
     .betchip { font-size:18px; }
     .pot .tocall { font-size:18px; }
     .controls { margin:5px 0; min-height:0; }
@@ -195,7 +206,7 @@
     <a href="guide-he.html" class="guide-btn">📖 מדריך</a>
   </div>
   <div id="summaryBox" class="summarybox"></div>
-  <div class="version">V1.18</div>
+  <div class="version">V1.19</div>
   <div style="text-align:center; font-size:12px; margin:-10px 0 20px;"><a href="guide-he.html" style="color:#5fd089; text-decoration:none;">📖 מדריך למשתמש בעברית</a></div>
 
   <script>
@@ -2927,7 +2938,7 @@
         }
 
         // Action word only; the dollar amount lives on the bet chip in front of the seat.
-        const last = pl.lastAction ? `<div class="act">${pl.lastAction}</div>` : '';
+        const last = pl.lastAction ? `<div class="act ${actionKind(pl.lastAction)}">${pl.lastAction}</div>` : '';
         div.innerHTML = `<div class="pos">${posText}${typeText}</div>${stackLine}
           <div class="cards">${cardHtml}</div><div class="badge">${badge}</div>${last}${rebuyLine}`;
         // Spotlight + floating label on the seat that is acting in this animation frame.
