@@ -152,7 +152,7 @@
 <body>
 
 <h1>🃏 NLH Trainer — מדריך מהיר</h1>
-<p class="subtitle">כיצד לשחק · בחירת סגנון משחק · כיצד לקרוא את האנליזה</p>
+<p class="subtitle">כיצד לשחק · בחירת סגנון משחק · כיצד לקרוא את האנליזה · פוט אודס מול טווחים</p>
 
 <!-- ══════════════════════════════════════════════════════════ -->
 <h2>חלק א׳ — כיצד להשתמש באפליקציה</h2>
@@ -451,6 +451,146 @@
   <p style="margin-top:8px">זו ה"לקח" שצריך לזכור מהיד הזו.</p>
 </div>
 
+<!-- ══════════════════════════════════════════════════════════ -->
+<hr />
+<h2>חלק ג׳ — חישוב פוט אודס מול טווח היריב</h2>
+
+<div class="card-box highlight">
+  <p style="margin:0">החלק הקשה הוא לא הפוט אודס ולא האקוויטי שלכם — אלא <strong>איך להכניס את הטווח של היריב לחישוב</strong>. הטריק: להפסיק לחשוב על "ענן של ידיים" ולצמצם את הטווח ל<strong>מספר אחד</strong>:</p>
+  <p style="margin:10px 0 0; color:var(--green); font-weight:700;">האקוויטי שלכם ≈ החלק מטווח ההימור של היריב שאתם <em>כבר מנצחים</em>.</p>
+</div>
+
+<h3>שני מצבים — תלוי בסוג היד שלכם</h3>
+<div class="card-box">
+  <table style="width:100%; border-collapse:collapse; font-size:13px;">
+    <thead>
+      <tr style="color:#7fae90; border-bottom:1px solid #2f5740;">
+        <th style="text-align:right; padding:6px 8px;">סוג היד</th>
+        <th style="text-align:right; padding:6px 8px;">מה מנצח את הקופה</th>
+        <th style="text-align:right; padding:6px 8px;">האקוויטי ≈</th>
+        <th style="text-align:right; padding:6px 8px;">תפקיד הטווח</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #1d2f23;">
+        <td style="padding:7px 8px;"><strong>יד עשויה</strong><br>(זוג ומעלה)</td>
+        <td style="padding:7px 8px; color:#bcd2c4;">להיות מקדימה <em>עכשיו</em></td>
+        <td style="padding:7px 8px; color:#bcd2c4;"><strong>החלק מהטווח שאתם מנצחים</strong></td>
+        <td style="padding:7px 8px; color:#bcd2c4;">הוא <em>כל</em> החישוב — קוראים אותו מהיריב + הלוח + גודל הבט</td>
+      </tr>
+      <tr>
+        <td style="padding:7px 8px;"><strong>דרואו</strong><br>(עדיין אין זוג)</td>
+        <td style="padding:7px 8px; color:#bcd2c4;">להשתפר (לפגוע באאוטים)</td>
+        <td style="padding:7px 8px; color:#bcd2c4;"><strong>האאוטים שלכם</strong> (כלל 4 ו-2)</td>
+        <td style="padding:7px 8px; color:#bcd2c4;">מתקן אאוטים נקיים + implied odds — <em>לא</em> את המספר הגולמי</td>
+      </tr>
+    </tbody>
+  </table>
+  <p style="margin-top:10px; font-size:13px;">אנלוגיה: <strong>יד עשויה</strong> = רץ שמוביל עכשיו — מנצח אלא אם מישהו לפניו, אז סופרים כמה לפניו. <strong>דרואו</strong> = רץ עם כרטיס הגרלה — מנצח אם הכרטיס נכנס, אז מה שחשוב הוא הסיכוי שייכנס (אאוטים), לא מי מוביל כרגע.</p>
+</div>
+
+<h3>שלב 1 — המחיר (קוראים אותו מגודל הבט)</h3>
+<div class="card-box">
+  <p>כמעט אף פעם לא צריך לחשב. גודל הבט ביחס לקופה קובע את האחוז שצריך לנצח. שננו 4 עוגנים:</p>
+  <table style="width:100%; border-collapse:collapse; font-size:13px; margin-top:6px;">
+    <thead>
+      <tr style="color:#7fae90; border-bottom:1px solid #2f5740;">
+        <th style="text-align:right; padding:6px 8px;">היריב מהמר</th>
+        <th style="text-align:right; padding:6px 8px;">צריך לנצח</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #1d2f23;"><td style="padding:6px 8px;">¼ קופה</td><td style="padding:6px 8px; color:#bcd2c4;">~17% (1 מ-6)</td></tr>
+      <tr style="border-bottom:1px solid #1d2f23;"><td style="padding:6px 8px;"><strong>חצי קופה</strong></td><td style="padding:6px 8px; color:#bcd2c4;"><strong>25% (1 מ-4)</strong></td></tr>
+      <tr style="border-bottom:1px solid #1d2f23;"><td style="padding:6px 8px;">⅔ קופה</td><td style="padding:6px 8px; color:#bcd2c4;">~29%</td></tr>
+      <tr style="border-bottom:1px solid #1d2f23;"><td style="padding:6px 8px;"><strong>קופה שלמה</strong></td><td style="padding:6px 8px; color:#bcd2c4;"><strong>33% (1 מ-3)</strong></td></tr>
+      <tr><td style="padding:6px 8px;">אוברבט (פי 2)</td><td style="padding:6px 8px; color:#bcd2c4;">40%</td></tr>
+    </tbody>
+  </table>
+  <p style="margin-top:8px; color:var(--green);">💡 לזכור: <strong>חצי קופה עולה רבע · קופה שלמה עולה שליש.</strong> כל השאר ביניהם. (חשוב: סופרים רק את <em>הקול שלכם</em> מול הקופה <em>הסופית</em> — הכסף שכבר בקופה לא שלכם.)</p>
+</div>
+
+<h3>שלב 2 — האקוויטי מול יד <em>בודדת</em> (העוגנים)</h3>
+<div class="card-box">
+  <p>השלב היחיד ששואל שיקול דעת — ופשוט קובעים: אני הרבה מאחור / מאחור / הטלת מטבע / מקדימה / הרבה מקדימה.</p>
+  <table style="width:100%; border-collapse:collapse; font-size:13px; margin-top:6px;">
+    <thead>
+      <tr style="color:#7fae90; border-bottom:1px solid #2f5740;">
+        <th style="text-align:right; padding:6px 8px;">המצב שלכם מול אותה יד</th>
+        <th style="text-align:right; padding:6px 8px;">הציבו</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #1d2f23;"><td style="padding:6px 8px;">כמעט מתים (זוג עליון מול <strong>סט / two pair</strong>)</td><td style="padding:6px 8px; color:#bcd2c4;"><strong>~5%</strong></td></tr>
+      <tr style="border-bottom:1px solid #1d2f23;"><td style="padding:6px 8px;">מאחור אך חי (מול <strong>קיקר / זוג טוב יותר</strong>, יש כמה אאוטים)</td><td style="padding:6px 8px; color:#bcd2c4;"><strong>~25%</strong></td></tr>
+      <tr style="border-bottom:1px solid #1d2f23;"><td style="padding:6px 8px;">הטלת מטבע (הזוג שלכם מול <strong>דרואו</strong>)</td><td style="padding:6px 8px; color:#bcd2c4;"><strong>~50%</strong></td></tr>
+      <tr style="border-bottom:1px solid #1d2f23;"><td style="padding:6px 8px;">מקדימה, דומיננטי (מול <strong>קיקר / זוג גרוע יותר</strong>)</td><td style="padding:6px 8px; color:#bcd2c4;"><strong>~85%</strong></td></tr>
+      <tr><td style="padding:6px 8px;">מוחץ (מול <strong>אוויר / דרואו שהתפספס</strong>)</td><td style="padding:6px 8px; color:#bcd2c4;"><strong>~95%</strong></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h3>שלב 3 — שיטת 5 הידיים (חישוב של ~10 שניות)</h3>
+
+<div class="step">
+  <div class="step-num">1</div>
+  <div class="step-body"><strong>נסחו את הבט כ-5 ידיים</strong> — 2 ערך (מנצחות אתכם), 2 שוליות, 1 בלוף.</div>
+</div>
+<div class="step">
+  <div class="step-num">2</div>
+  <div class="step-body"><strong>תייגו כל אחת</strong> בעוגן מהטבלה למעלה.</div>
+</div>
+<div class="step">
+  <div class="step-num">3</div>
+  <div class="step-body"><strong>מבחן מציאות לקומבינציות</strong> — סטים וידי-מפלצת נדירים (1–3 קומבינציות); זוגות גרועים + אוויר נפוצים. מחקו כל דוגמה שאי אפשר שתהיה לו (ל-nit אין בלופים; לקריאן אין פולדים).</div>
+</div>
+<div class="step">
+  <div class="step-num">4</div>
+  <div class="step-body"><strong>ממוצע</strong> — ממוצע פשוט אם הטווח מאוזן; הטו לכיוון הערימה הגדולה יותר.</div>
+</div>
+<div class="step">
+  <div class="step-num">5</div>
+  <div class="step-body"><strong>השוו למחיר</strong> (שלב 1). אקוויטי ≥ מחיר → קול.</div>
+</div>
+
+<h3>דוגמה מלאה — ותואמת את המנוע</h3>
+<div class="card-box">
+  <p style="margin-bottom:8px;"><strong>טרן.</strong> בידכם <strong>K♣ J♦</strong> על הלוח <strong>K♠ 7♥ 4♣ 2♦</strong>. ה-CO (TAG) מהמר <strong>⅔ קופה</strong> → מחיר <strong>~29%</strong>.</p>
+  <table style="width:100%; border-collapse:collapse; font-size:13px;">
+    <thead>
+      <tr style="color:#7fae90; border-bottom:1px solid #2f5740;">
+        <th style="text-align:right; padding:6px 8px;">דוגמה</th>
+        <th style="text-align:right; padding:6px 8px;">המצב שלכם</th>
+        <th style="text-align:right; padding:6px 8px;">אקוויטי</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #1d2f23;"><td style="padding:6px 8px;">סט (77/44/22)</td><td style="padding:6px 8px; color:#bcd2c4;">כמעט מתים</td><td style="padding:6px 8px; color:#bcd2c4;">5%</td></tr>
+      <tr style="border-bottom:1px solid #1d2f23;"><td style="padding:6px 8px;">K טוב יותר (AK, KQ)</td><td style="padding:6px 8px; color:#bcd2c4;">מאחור, מעט אאוטים</td><td style="padding:6px 8px; color:#bcd2c4;">25%</td></tr>
+      <tr style="border-bottom:1px solid #1d2f23;"><td style="padding:6px 8px;">K גרוע יותר (KT, K9)</td><td style="padding:6px 8px; color:#bcd2c4;">דומיננטי</td><td style="padding:6px 8px; color:#bcd2c4;">85%</td></tr>
+      <tr style="border-bottom:1px solid #1d2f23;"><td style="padding:6px 8px;">underpair (QQ–88)</td><td style="padding:6px 8px; color:#bcd2c4;">מקדימה</td><td style="padding:6px 8px; color:#bcd2c4;">85%</td></tr>
+      <tr><td style="padding:6px 8px;">דרואו שהתפספס (QJ, T9)</td><td style="padding:6px 8px; color:#bcd2c4;">מוחץ</td><td style="padding:6px 8px; color:#bcd2c4;">90%</td></tr>
+    </tbody>
+  </table>
+  <p style="margin-top:10px;"><strong>ממוצע:</strong> (5 + 25 + 85 + 85 + 90) ÷ 5 = <strong style="color:var(--green);">58%</strong>.</p>
+  <p style="margin:4px 0 0;">58% &gt; 29% → <strong style="color:var(--green);">קול.</strong> &nbsp;|&nbsp; האקוויטי שהמנוע חישב לספוט הזה בדיוק: <strong>56%</strong>. ההערכה של 10 שניות פספסה ב-2 נקודות.</p>
+</div>
+
+<h3>אותו ספוט, יריב אחר → תוצאה הפוכה</h3>
+<div class="card-box">
+  <p>אותה יד, אותו לוח, אותו מחיר של ⅔ קופה — אבל היריב הוא <strong>nit (הדוק-פסיבי)</strong>.</p>
+  <p>במבחן המציאות (שלב 3): ל-nit <em>אין</em> את הבלוף וכמעט אף פעם לא את ה-K הגרוע. אז <strong>מוחקים</strong> את הדוגמאות האלה — 5 הידיים מתכווצות בעיקר ל-<code>סט, AK, KQ, KK, AA</code>, וכולן מנצחות אתכם. הממוצע צונח ל-<strong style="color:var(--red);">~10%</strong>.</p>
+  <p style="margin-bottom:0;">10% &lt; 29% → <strong style="color:var(--red);">פולד.</strong> (המנוע: <strong>7%</strong>.) אותם קלפים, החלטה הפוכה — וכל מה שהשתנה הוא <strong>אילו דוגמאות שורדות את מבחן המציאות.</strong> זה בדיוק "להכניס את הטווח" לחישוב.</p>
+</div>
+
+<h3>שתי קיצורי דרך</h3>
+<div class="card-box">
+  <ul style="margin-bottom:0;">
+    <li><strong>אם יש לכם דרואו — דלגו על כל זה.</strong> אתם במצב השני: אקוויטי ≈ האאוטים (כלל 4/2), ואז רק בדקו שהאאוטים נקיים (קלף שמשלים אתכם לא נותן לו יד גדולה יותר).</li>
+    <li><strong>הגרסה העצלה:</strong> בדרך כלל מספיק ערימת ה"אני מנצח". ליד עשויה שלא משתפרת, האקוויטי ≈ החלק מהבטים שלו שאתם מנצחים. אם אתם מעריכים "אני מנצח בערך חצי ממה שהוא מהמר כאן" — סיימתם, החצי הזה הוא האקוויטי.</li>
+  </ul>
+</div>
+
 <!-- ── GRADE GUIDE ── -->
 <h2>טבלת ציונים</h2>
 <div class="card-box">
@@ -502,7 +642,7 @@
 
 <hr />
 <p style="text-align:center; font-size:12px; color:#4a6b55; margin-top:24px;">
-  NLH Trainer V1.15 · <a href="https://galdarom.github.io/nlh-poker-trainer/" style="color:#5fd089;">galdarom.github.io/nlh-poker-trainer</a>
+  NLH Trainer V1.19 · <a href="https://galdarom.github.io/nlh-poker-trainer/" style="color:#5fd089;">חזרה לאפליקציה ←</a>
 </p>
 
 </body>
