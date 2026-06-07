@@ -109,6 +109,15 @@
   .typebtn { padding:4px 9px; margin:0 2px; font-size:12px; border-radius:6px; border:1px solid #3a5; background:#1d2b22; color:#cfe6d6; cursor:pointer; }
   .typebtn.active { background:#3a8f5a; color:#fff; border-color:#5fd089; }
   .guide-btn { padding:4px 10px; margin:0 2px; font-size:12px; border-radius:6px; border:1px solid #3a5; background:#1d2b22; color:#5fd089; cursor:pointer; text-decoration:none; display:inline-block; }
+  /* Hand-trainer drill header + lesson panel */
+  .drillbar { text-align:center; font-size:13px; color:var(--gold); font-weight:600; margin:4px auto 0; max-width:640px; letter-spacing:.3px; }
+  .drillbar:empty { display:none; }
+  .summarybox .sb-lesson { background:#15251b; border:1px solid #3a6b4c; border-left:3px solid var(--gold);
+    border-radius:8px; padding:9px 12px; margin-bottom:11px; }
+  .summarybox.rtl .sb-lesson { border-left:1px solid #3a6b4c; border-right:3px solid var(--gold); }
+  .summarybox .sb-lesson .lesson-head { font-size:14px; color:var(--gold); font-weight:700; }
+  .summarybox .sb-lesson .lesson-act { font-size:13px; color:#9be59b; font-weight:700; margin-top:3px; }
+  .summarybox .sb-lesson .lesson-why { font-size:13px; color:#cfe6d6; margin-top:3px; line-height:1.45; }
   /* --- Opponent action animation --- */
   /* Glow ring on the seat that is acting right now. */
   .seat.acting { animation: seatpulse 1.05s ease-out; }
@@ -185,6 +194,7 @@
 <body>
   <h1>NLH Trainer — Stacks · All-ins · Side Pots</h1>
   <div class="session" id="session"></div>
+  <div id="drillBar" class="drillbar"></div>
   <div class="tablewrap" id="tablewrap"><div class="table" id="table"></div></div>
   <div id="actingHint" class="actinghint"></div>
   <div id="controls" class="controls"></div>
@@ -198,6 +208,8 @@
     <button id="myRangeBtn" class="secondary">My range</button>
     <button id="dealBtn" class="secondary">Deal new hand</button>
     <button id="newGameBtn" class="secondary">New Game</button>
+    <span class="sep">·</span>
+    <button id="trainerBtn" class="secondary">🎓 Learn AK</button>
   </div>
   <div class="controls" id="langRow">
     <span class="setuplabel">Coaching language:</span>
@@ -206,7 +218,7 @@
     <a href="guide-he.html" class="guide-btn">📖 מדריך</a>
   </div>
   <div id="summaryBox" class="summarybox"></div>
-  <div class="version">V1.19</div>
+  <div class="version">V1.20</div>
   <div style="text-align:center; font-size:12px; margin:-10px 0 20px;"><a href="guide-he.html" style="color:#5fd089; text-decoration:none;">📖 מדריך למשתמש בעברית</a></div>
 
   <script>
@@ -2656,8 +2668,232 @@
 
 </script>
   <script>
+// Specific-hand trainer: data-driven "hand courses" (v1: AK).
+// Pure data + helpers — no DOM. UMD: Node requires engine + postflop; browser uses window.*.
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    module.exports = factory(require('./engine.js'), require('./postflop.js'));
+  } else {
+    root.HandCourse = factory(root.Engine, root.Postflop);
+  }
+})(typeof self !== 'undefined' ? self : this, function (Engine, Postflop) {
+  const RANKS = Engine.RANKS;                 // ['2'..'A']
+  const SUITS = ['c', 'd', 'h', 's'];
+  const rankVal = (r) => RANKS.indexOf(r);
+  const parseCard = (code) => ({ rank: code[0], suit: code[1] });
+  const codeOf = (c) => c.rank + c.suit;
+
+  // ---- Lesson library: keyed by spot. EN now; `he` filled as a follow-up (UI falls back to EN). ----
+  const LESSONS = {
+    'open-early': { title: 'AKo · UTG — first in', action: 'Raise',
+      why: 'AK is premium from every seat, including under the gun. You flop the best possible top pair and hold two overcards when you miss. Open ~2.5bb; never limp or fold.' },
+    'open-late': { title: 'AKs · CO/BTN — first in', action: 'Raise',
+      why: 'Suited AK is a top-tier hand — open and take initiative. Late position lets you play a big pot in position, exactly where AKs shines.' },
+    'open-sb': { title: 'AKo · SB — folded to you', action: 'Raise (not limp)',
+      why: "Against just the BB, raising dominates their calling range and can win it outright; limping surrenders the lead and gives a free flop." },
+    'vs-raise-ip': { title: 'AK · in position vs an open', action: '3-bet',
+      why: 'Build the pot and isolate. AK folds out worse hands and is rarely dominated. Re-raise ~3x their open; flatting is an occasional mix, folding never.' },
+    'vs-raise-tight': { title: 'AK · vs a tight (UTG) open', action: '3-bet or call — never fold',
+      why: "Even against a strong early-position range AK is a clear continue — you're flipping or ahead. Folding a premium preflop is a leak." },
+    'vs-raise-blinds': { title: 'AK · in the blinds vs a steal', action: '3-bet (out of position)',
+      why: "Don't flat out of position and play a guessing game — take the initiative and often win it preflop. AK realizes equity poorly when flatting OOP." },
+    'vs-raise-multiway': { title: 'AK · facing an open + a caller', action: '3-bet to isolate',
+      why: 'AK plays poorly multiway, where it often must hit to win. Re-raise to thin the field and get heads-up with the lead.' },
+    'vs-3bet-reg': { title: 'AKo · facing a 3-bet (regular)', action: '4-bet or call — never fold',
+      why: 'At 100bb both are fine: 4-betting gets value and denies equity vs QQ+/AK; calling keeps their bluffs in. Folding AK to one 3-bet is a mistake.' },
+    'vs-3bet-suited': { title: 'AKs · facing a 3-bet', action: 'Lean 4-bet / call',
+      why: 'The nut-flush blocker cuts their AA/AK combos and the suitedness adds equity when called — AKs loves playing big pots.' },
+    'vs-3bet-nit': { title: 'AK · facing a nit’s 3-bet', action: 'Call, play cautiously',
+      why: "A truly tight player's 3-bet is QQ+/AK heavy — you're flipping at best. Flat and play postflop rather than blasting it in." },
+    'deep-aks': { title: 'AKs · deep-stacked', action: 'Play a bigger pot',
+      why: 'Nut-flush potential means strong implied odds at depth — keep applying pressure and look to stack off when you make the nut flush.' },
+    'vs-lag-3bet': { title: 'AK · vs a LAG’s light 3-bet', action: '4-bet for value',
+      why: 'Against a wide, aggressive 3-betting range AK is well ahead — re-raise for value rather than flatting and letting them barrel.' },
+    'postflop-tptk': { title: 'AK flops top pair, top kicker', action: 'Bet for value',
+      why: 'You hold the best top pair possible — c-bet and build the pot. Size up on wet boards to protect against draws.' },
+    'postflop-miss': { title: 'AK misses (ace-high) — you raised', action: 'One c-bet, then assess',
+      why: 'You still have two overcards (~6 outs) and often the best hand vs air. Fire one c-bet; don’t barrel ace-high into resistance without picking up equity.' },
+    'postflop-nfd': { title: 'AKs flops the nut-flush draw', action: 'Semi-bluff hard',
+      why: 'Nut-flush draw plus two overcards is a mountain of equity — bet or raise, and be happy to get it all in.' },
+    'postflop-whiff-raised': { title: 'AK whiffs and faces a raise', action: 'Fold — don’t fall in love',
+      why: 'You c-bet ace-high, got raised on a board you missed — you’re usually beaten. Release it and move on.' },
+  };
+
+  // ---- AK course: each drill forces the taught spot. ----
+  // setup.villains[].cards force the action; unscripted seats get folding trash.
+  // leadIn = hero actions auto-played (engine-level) to reach a postflop decision.
+  const AK_DRILLS = [
+    { id: 'ak-utg-open', title: 'Open from UTG', hand: 'AKo', heroPosition: 'UTG',
+      setup: { villains: [] }, expectSpots: ['open-early'] },
+    { id: 'ak-btn-open', title: 'Open from the Button', hand: 'AKs', heroPosition: 'BTN',
+      setup: { villains: [] }, expectSpots: ['open-late'] },
+    { id: 'ak-sb-open', title: 'Folded to you in the SB', hand: 'AKo', heroPosition: 'SB',
+      setup: { villains: [] }, expectSpots: ['open-sb'] },
+    { id: 'ak-co-vs-open', title: 'Facing a CO/MP open, in position', hand: 'AKo', heroPosition: 'CO',
+      setup: { villains: [{ pos: 'MP', type: 'TAG', cards: ['Ac', 'Qc'] }] }, expectSpots: ['vs-raise-ip'] },
+    { id: 'ak-btn-vs-tight', title: 'Facing a tight UTG open', hand: 'AKo', heroPosition: 'BTN',
+      setup: { villains: [{ pos: 'UTG', type: 'TAG', cards: ['Ac', 'Qc'] }] }, expectSpots: ['vs-raise-tight'] },
+    { id: 'ak-bb-vs-steal', title: 'Defending the BB vs a steal', hand: 'AKo', heroPosition: 'BB',
+      setup: { villains: [{ pos: 'BTN', type: 'LAG', cards: ['Tc', '9c'] }] }, expectSpots: ['vs-raise-blinds'] },
+    { id: 'ak-hj-multiway', title: 'Facing an open + a caller', hand: 'AKo', heroPosition: 'HJ',
+      setup: { villains: [{ pos: 'UTG', type: 'TAG', cards: ['Ac', 'Qc'] }, { pos: 'MP', type: 'LP', cards: ['9h', '9d'] }] },
+      expectSpots: ['vs-raise-multiway'] },
+    { id: 'ak-utg-vs-3bet', title: 'You open UTG, face a 3-bet', hand: 'AKo', heroPosition: 'UTG',
+      setup: { villains: [{ pos: 'CO', type: 'TAG', cards: ['Qc', 'Qd'] }] }, expectSpots: ['open-early', 'vs-3bet-reg'] },
+    { id: 'ak-co-vs-3bet-suited', title: 'AKs opens CO, faces a 3-bet', hand: 'AKs', heroPosition: 'CO',
+      setup: { villains: [{ pos: 'BTN', type: 'TAG', cards: ['Qc', 'Qd'] }] }, expectSpots: ['open-late', 'vs-3bet-suited'] },
+    { id: 'ak-mp-vs-nit-3bet', title: 'You open MP, a nit 3-bets', hand: 'AKo', heroPosition: 'MP',
+      setup: { villains: [{ pos: 'CO', type: 'TP', cards: ['Kc', 'Kh'] }] },
+      expectSpots: ['open-early', 'vs-3bet-nit'] },
+    { id: 'ak-co-vs-lag-3bet', title: 'You open CO, a LAG 3-bets', hand: 'AKo', heroPosition: 'CO',
+      setup: { villains: [{ pos: 'BTN', type: 'LAG', cards: ['Qc', 'Qd'] }] },
+      expectSpots: ['open-late', 'vs-lag-3bet'] },
+    { id: 'ak-btn-deep', title: 'AKs deep-stacked on the Button', hand: 'AKs', heroPosition: 'BTN',
+      stacksBB: 250, setup: { villains: [] }, lessonKey: 'deep-aks', expectSpots: ['deep-aks'] },
+    { id: 'ak-flop-tptk', title: 'You flop top pair, top kicker', hand: 'AKo', heroPosition: 'CO',
+      setup: { villains: [{ pos: 'BTN', type: 'LP', cards: ['8h', '8d'] }], board: ['Ah', '7c', '2d'], leadIn: ['raise'] },
+      expectSpots: ['postflop-tptk'] },
+    { id: 'ak-flop-miss', title: 'You miss the flop (ace-high)', hand: 'AKo', heroPosition: 'CO',
+      setup: { villains: [{ pos: 'BTN', type: 'LP', cards: ['Jd', 'Td'] }], board: ['9h', '7c', '2d'], leadIn: ['raise'] },
+      expectSpots: ['postflop-miss'] },
+    { id: 'ak-flop-nfd', title: 'You flop the nut-flush draw', hand: 'AKs', heroPosition: 'CO',
+      setup: { villains: [{ pos: 'BTN', type: 'LP', cards: ['Qd', 'Jd'] }], board: ['Th', '7s', '2s'], leadIn: ['raise'] },
+      expectSpots: ['postflop-nfd'] },
+    { id: 'ak-flop-whiff-raised', title: 'You c-bet, get raised on a whiff', hand: 'AKo', heroPosition: 'CO',
+      setup: { villains: [{ pos: 'BTN', type: 'TAG', cards: ['9s', '9c'] }], board: ['9h', '7c', '2d'], leadIn: ['raise', 'bet'] },
+      expectSpots: ['postflop-whiff-raised'] },
+  ];
+
+  const AK_COURSE = { id: 'ak', title: 'How to play AK', drills: AK_DRILLS };
+
+  // ---- Position <-> seat helpers (hero is seat 0). ----
+  function buttonSeatFor(position, numSeats) {
+    numSeats = numSeats || 7;
+    for (let bs = 0; bs < numSeats; bs++) {
+      if (Engine.positionForSeat(0, bs, numSeats) === position) return bs;
+    }
+    return 0;
+  }
+  function seatForPosition(position, buttonSeat, numSeats) {
+    numSeats = numSeats || 7;
+    for (let s = 0; s < numSeats; s++) {
+      if (Engine.positionForSeat(s, buttonSeat, numSeats) === position) return s;
+    }
+    return -1;
+  }
+
+  function heroCardsFor(drill) {
+    if (drill.setup && drill.setup.heroCards) return drill.setup.heroCards.map(parseCard);
+    return drill.hand === 'AKs' ? [parseCard('As'), parseCard('Ks')] : [parseCard('As'), parseCard('Kd')];
+  }
+
+  // Two low offsuit cards (rank gap >= 2) that nobody is using — a clear fold everywhere.
+  function drawTrash(used) {
+    const low = ['2', '3', '4', '5', '6', '7', '8', '9'];
+    const avail = [];
+    for (const r of low) for (const s of SUITS) { const code = r + s; if (!used.has(code)) avail.push({ rank: r, suit: s }); }
+    for (let i = 0; i < avail.length; i++) {
+      for (let j = i + 1; j < avail.length; j++) {
+        const a = avail[i], b = avail[j];
+        if (a.suit !== b.suit && Math.abs(rankVal(a.rank) - rankVal(b.rank)) >= 2) {
+          used.add(codeOf(a)); used.add(codeOf(b)); return [a, b];
+        }
+      }
+    }
+    // fallback: any two distinct unused cards
+    const all = [];
+    for (const r of RANKS) for (const s of SUITS) { const code = r + s; if (!used.has(code)) all.push({ rank: r, suit: s }); }
+    const a = all[0], b = all[1]; used.add(codeOf(a)); used.add(codeOf(b)); return [a, b];
+  }
+
+  // Build a 52-card deck + seats + stacks that force the drill's spot, ready for HandFlow.createHand.
+  function buildDrill(drill, opts) {
+    opts = opts || {};
+    const numSeats = opts.numSeats || 7;
+    const bigBlind = opts.bigBlind || 5;
+    const heroType = opts.heroType != null ? opts.heroType : null;
+    const buttonSeat = buttonSeatFor(drill.heroPosition, numSeats);
+
+    const used = new Set();
+    const assign = {};
+    const mark = (cards) => cards.forEach(c => used.add(codeOf(c)));
+
+    const heroCards = heroCardsFor(drill);
+    assign[0] = heroCards; mark(heroCards);
+
+    const typeBySeat = {};
+    for (const v of (drill.setup.villains || [])) {
+      const seat = seatForPosition(v.pos, buttonSeat, numSeats);
+      const cards = v.cards.map(parseCard);
+      assign[seat] = cards; typeBySeat[seat] = v.type; mark(cards);
+    }
+    const board = (drill.setup.board || []).map(parseCard);
+    mark(board);
+    for (let s = 0; s < numSeats; s++) if (!assign[s]) assign[s] = drawTrash(used);
+
+    // Lay out the deck: seat-major hole cards, then board at 14..18, then leftovers.
+    const deck = new Array(52).fill(null);
+    for (let s = 0; s < numSeats; s++) { deck[2 * s] = assign[s][0]; deck[2 * s + 1] = assign[s][1]; }
+    const boardStart = 2 * numSeats; // 14 for 7-handed
+    for (let k = 0; k < board.length; k++) deck[boardStart + k] = board[k];
+    const leftover = [];
+    for (const r of RANKS) for (const s of SUITS) { const code = r + s; if (!used.has(code)) leftover.push({ rank: r, suit: s }); }
+    let li = 0;
+    for (let i = 0; i < 52; i++) if (deck[i] == null) deck[i] = leftover[li++];
+
+    const seats = Engine.seatsWithPositions(numSeats, buttonSeat).map(si => ({
+      seat: si.seat, position: si.position,
+      type: si.seat === 0 ? heroType : (typeBySeat[si.seat] || 'TAG'),
+    }));
+    const stacks = {};
+    const stackChips = (drill.stacksBB || 100) * bigBlind;
+    for (let s = 0; s < numSeats; s++) stacks[s] = stackChips;
+
+    return { deck, seats, buttonSeat, stacks, heroCards };
+  }
+
+  // Classify the live spot into a lesson key. ctx is built by the UI from the hand state.
+  function classifySpot(ctx) {
+    const blind = ctx.position === 'SB' || ctx.position === 'BB';
+    const late = ctx.position === 'HJ' || ctx.position === 'CO' || ctx.position === 'BTN';
+    if (!ctx.board || ctx.board.length === 0) {
+      if ((ctx.raisesSoFar || 0) === 0) {
+        if (ctx.position === 'SB') return 'open-sb';
+        return late ? 'open-late' : 'open-early';
+      }
+      if (!ctx.heroRaised) {
+        if (ctx.callersExist) return 'vs-raise-multiway';
+        if (blind) return 'vs-raise-blinds';
+        if (ctx.openerPosition === 'UTG') return 'vs-raise-tight';
+        return 'vs-raise-ip';
+      }
+      // hero raised and now faces a re-raise (3-bet)
+      if (ctx.hand === 'AKs') return 'vs-3bet-suited';
+      if (ctx.threeBettorType === 'TP') return 'vs-3bet-nit';
+      if (ctx.threeBettorType === 'LAG') return 'vs-lag-3bet';
+      return 'vs-3bet-reg';
+    }
+    // postflop
+    const ps = Postflop.postflopScore(ctx.heroCards, ctx.board);
+    if (ctx.hand === 'AKs' && ps.draws && ps.draws.flushDraw) return 'postflop-nfd';
+    if (ps.made === 'top pair') return 'postflop-tptk';
+    if (ctx.heroRaisedPre && (ps.made === 'no pair')) return ctx.facingBet ? 'postflop-whiff-raised' : 'postflop-miss';
+    return 'postflop-miss';
+  }
+
+  function lessonFor(drill, ctx) {
+    if (drill && drill.lessonKey) return LESSONS[drill.lessonKey] || null;
+    return LESSONS[classifySpot(ctx)] || null;
+  }
+
+  return { LESSONS, AK_COURSE, buttonSeatFor, seatForPosition, buildDrill, classifySpot, lessonFor };
+});
+
+</script>
+  <script>
     const E = window.Engine, P = window.Players, PF = window.Postflop, EV = window.Evaluator,
-          C = window.Coach, HF = window.HandFlow, ST = window.Stacks, R = window.Ranges;
+          C = window.Coach, HF = window.HandFlow, ST = window.Stacks, R = window.Ranges,
+          HC = window.HandCourse;
     if (!E || !P || !PF || !EV || !C || !HF || !ST || !R) {
       document.body.innerHTML = '<h1>NLH Trainer</h1><p style="text-align:center;max-width:600px;margin:20px auto">' +
         'Could not load modules. Keep this file next to the <code>src</code> folder, or open the <code>dist/</code> build.</p>';
@@ -2684,6 +2920,10 @@
     function resetStats() { decisionStats = { total: 0, optimal: 0, A: 0, B: 0, C: 0, F: 0, loose: 0, tight: 0 }; }
     let lastDecision = null;
     let hand = null, hero = null, revealed = new Set(), settled = false, rebuysToShow = [];
+
+    // --- Hand-trainer (drill) mode ---
+    let trainerMode = false, drillIndex = 0, currentDrill = null;
+    const course = HC ? HC.AK_COURSE : null;
 
     // --- Opponent-action animation state ---
     // When animFrame is non-null, render() draws a reconstructed mid-sequence "frame" instead of
@@ -2820,9 +3060,96 @@
       if (settled) return;
       const res = hand.result();
       if (!res) return;
+      if (trainerMode) { rebuysToShow = []; settled = true; return; } // drills don't touch the bankroll
       session.applyResult(hand.payouts(), hand.contributions());
       rebuysToShow = session.lastRebuys();
       settled = true;
+    }
+
+    // ----- Hand-trainer (drill) mode: deal a scripted AK spot and show its lesson -----
+    function enterTrainer() {
+      if (!course) return;
+      trainerMode = true; drillIndex = 0; resetStats();
+      dealDrill();
+    }
+    function exitTrainer() {
+      trainerMode = false; currentDrill = null;
+      const bar = document.getElementById('drillBar'); if (bar) bar.textContent = '';
+      deal();
+    }
+    function nextDrill() { drillIndex++; dealDrill(); }
+
+    // Auto-play the hero's lead-in actions (engine-level, no grading/animation) to reach a
+    // postflop drill's taught decision.
+    function autoLeadIn(actions) {
+      for (const a of (actions || [])) {
+        if (!hand.awaitingHero()) break;
+        const o = hand.legalHeroOptions();
+        if (a === 'raise' && o.canRaise) hand.act('raise', { toAmount: o.raiseToAmount });
+        else if ((a === 'raise' || a === 'bet') && o.canBet) hand.act('bet', { toAmount: o.betAmount });
+        else if (a === 'call' && o.canCall) hand.act('call');
+        else if (o.canCheck) hand.act('check');
+        else if (o.canCall) hand.act('call');
+      }
+    }
+
+    function dealDrill() {
+      cancelAnim(); animFrame = null;
+      const drills = course.drills;
+      const i = ((drillIndex % drills.length) + drills.length) % drills.length;
+      currentDrill = drills[i];
+      const built = HC.buildDrill(currentDrill, { numSeats: NUM_SEATS, bigBlind: BB });
+      buttonSeat = built.buttonSeat;
+      hand = HF.createHand({ seats: built.seats, heroSeat: HERO_SEAT, buttonSeat, numSeats: NUM_SEATS,
+        smallBlind: SB, bigBlind: BB, stacks: built.stacks, deck: built.deck });
+      hero = hand._debug.hands()[HERO_SEAT];
+      revealed = new Set(); settled = false; lastDecision = null;
+      if (currentDrill.setup.leadIn) autoLeadIn(currentDrill.setup.leadIn);
+      setFeedback('', ''); document.getElementById('result').textContent = '';
+      closeOverlay();
+      render();
+    }
+
+    // The predefined AK lesson for the live spot (built from the hand state, like the test harness).
+    function trainerLesson() {
+      if (!trainerMode || !currentDrill || !hand || !HC) return null;
+      const st = hand.state();
+      const board = hand.board();
+      const heroCards = hand._debug.hands()[HERO_SEAT];
+      const log = hand.actionLog();
+      const isRaise = (a) => a === 'raise' || a === 'bet' || a === 'all-in';
+      const preRaises = log.filter(e => e.street === 'preflop' && isRaise(e.action));
+      const lastVillainRaise = preRaises.filter(e => e.seat !== HERO_SEAT).slice(-1)[0];
+      const heroPl = st.players.find(p => p.seat === HERO_SEAT) || { committed: 0 };
+      const ctx = {
+        position: posOf(HERO_SEAT),
+        raisesSoFar: st.raisesSoFar || 0,
+        heroRaised: log.some(e => e.seat === HERO_SEAT && e.street === 'preflop' && isRaise(e.action)),
+        heroRaisedPre: st.preflopAggressor === HERO_SEAT,
+        callersExist: log.some(e => e.street === 'preflop' && e.action === 'call' && e.seat !== HERO_SEAT),
+        openerPosition: preRaises[0] ? preRaises[0].position : null,
+        threeBettorType: lastVillainRaise ? lastVillainRaise.type : null,
+        hand: currentDrill.hand, heroCards, board,
+        facingBet: (st.currentBet - heroPl.committed) > 0,
+      };
+      return HC.lessonFor(currentDrill, ctx);
+    }
+
+    // Toggle button labels + drill header for the current mode.
+    function renderTrainerChrome() {
+      const dealBtn = document.getElementById('dealBtn');
+      const newGameBtn = document.getElementById('newGameBtn');
+      const trainerBtn = document.getElementById('trainerBtn');
+      const bar = document.getElementById('drillBar');
+      if (dealBtn) dealBtn.textContent = trainerMode ? 'Next drill ▶' : 'Deal new hand';
+      if (newGameBtn) newGameBtn.textContent = trainerMode ? '✕ Exit trainer' : 'New Game';
+      if (trainerBtn) trainerBtn.style.display = (trainerMode || !course) ? 'none' : 'inline-block';
+      if (bar) {
+        if (trainerMode && currentDrill) {
+          const n = (((drillIndex % course.drills.length) + course.drills.length) % course.drills.length) + 1;
+          bar.textContent = '🎓 ' + course.title + ' · Drill ' + n + '/' + course.drills.length + ' · ' + currentDrill.title;
+        } else bar.textContent = '';
+      }
     }
 
     function render() {
@@ -2907,7 +3234,7 @@
         const typeText = isHero ? '' : ` <span class="type">${pl.type}</span>`;
 
         // stack line: during the hand show the round's remaining stack; after settle show session stack
-        const shownStack = settled ? liveStacks[s] : pl.stack;
+        const shownStack = (settled && !trainerMode) ? liveStacks[s] : pl.stack;
         const stackLine = `<div class="stack">$${shownStack} (${bb(shownStack)})${pl.allIn ? ' · ALL-IN' : ''}</div>`;
         const rebuyLine = (settled && rebuysToShow.includes(s)) ? '<div class="rebuy">💰 rebought</div>' : '';
 
@@ -2976,6 +3303,7 @@
       renderHeroInfo();
       renderHeroTypeSelector();
       renderLangSelector();
+      renderTrainerChrome();
       fitTable();
       renderSummary();
     }
@@ -3259,6 +3587,14 @@
         + ' · ' + L.dec + ' ' + d.total + ' · ' + L.opt + ' ' + d.optimal + ' (' + acc + '%)'
         + ' · ' + L.grades + ' A ' + d.A + ' · B ' + d.B + ' · C ' + d.C + ' · F ' + d.F;
       let html = '<div class="sb-title">' + L.title + '</div>';
+      // Drill mode: surface the predefined AK lesson for the live spot, above the live grade.
+      const lesson = trainerLesson();
+      if (lesson) {
+        html += '<div class="sb-lesson">'
+          + '<div class="lesson-head">🎓 ' + escapeHtml(lesson.title) + '</div>'
+          + '<div class="lesson-act">✅ ' + (he ? 'הקו הנכון' : 'Best play') + ': ' + escapeHtml(lesson.action) + '</div>'
+          + '<div class="lesson-why">' + escapeHtml(lesson.why) + '</div></div>';
+      }
       if (lastDecision) {
         html += '<div class="sb-decision ' + (lastDecision.verdict || '') + '">' + escapeHtml(lastDecision.text) + '</div>';
         if (lastDecision.analysis)
@@ -3276,8 +3612,9 @@
 
     // Tap the table to skip the rest of the opponent-action animation.
     document.getElementById('tablewrap').addEventListener('click', () => { if (animating()) finishAnim(); });
-    document.getElementById('dealBtn').addEventListener('click', deal);
-    document.getElementById('newGameBtn').addEventListener('click', newGame);
+    document.getElementById('dealBtn').addEventListener('click', () => { if (trainerMode) nextDrill(); else deal(); });
+    document.getElementById('newGameBtn').addEventListener('click', () => { if (trainerMode) exitTrainer(); else newGame(); });
+    document.getElementById('trainerBtn').addEventListener('click', enterTrainer);
     document.getElementById('myRangeBtn').addEventListener('click', function () {
       const st = hand.state();
       const heroPos = posOf(HERO_SEAT);
